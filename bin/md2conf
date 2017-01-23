@@ -1,453 +1,327 @@
-#!/usr/bin/python
-#
-# --------------------------------------------------------------------------------------------------------
-# Rittman Mead Markdown to Confluence Tool
-# --------------------------------------------------------------------------------------------------------
-# Create or Update Atlas pages remotely using markdown files.
-#
-# --------------------------------------------------------------------------------------------------------
-# Usage: rest_md2conf.py markdown spacekey
-# --------------------------------------------------------------------------------------------------------
+#!/usr/bin/python3
+"""
+Create of update Confluence pages from markdown
+"""
 
-import  sys, os
-import	markdown, mimetypes, codecs
-import	re, collections
-import	requests, json
-import	argparse, urllib, webbrowser
+import argparse
+import collections
+import json
+import os.path
+import mimetypes
+import re
+import sys
+import webbrowser
 
-# ArgumentParser to parse arguments and options
-parser = argparse.ArgumentParser()
-parser.add_argument("markdownFile", help="Full path of the markdown file to convert and upload.")
-parser.add_argument('spacekey', help="Confluence Space key for the page. If omitted, will use user space.")
-parser.add_argument('-u', '--username', help='Confluence username if $CONFLUENCE_USERNAME not set.')
-parser.add_argument('-p', '--password', help='Confluence password if $CONFLUENCE_PASSWORD not set.')
-parser.add_argument('-o', '--orgname', help='Confluence organisation if $CONFLUENCE_ORGNAME not set. e.g. https://XXX.atlassian.net')
-parser.add_argument('-a', '--ancestor', help='Parent page under which page will be created or moved.')
-parser.add_argument('-t', '--attachment', nargs='+', help='Attachment(s) to upload to page. Paths relative to the markdown file.')
-parser.add_argument('-c', '--contents', action='store_true', default=False, help='Use this option to generate a contents page.')
-parser.add_argument('-g', '--nogo', action='store_true', default=False, help='Use this option to skip navigation after upload.')
-parser.add_argument('-n', '--nossl', action='store_true', default=False, help='Use this option if NOT using SSL. Will use HTTP instead of HTTPS.')
-parser.add_argument('-d', '--delete', action='store_true', default=False, help='Use this option to delete the page instead of create it.')
-args = parser.parse_args()
+import markdown
+import requests
 
-# Assign global variables
-try:
-	markdownFile = args.markdownFile
-	spacekey = args.spacekey
-	username = os.getenv('CONFLUENCE_USERNAME', args.username)
-	password = os.getenv('CONFLUENCE_PASSWORD', args.password)
-	orgname = os.getenv('CONFLUENCE_ORGNAME', args.orgname)
-	ancestor = args.ancestor
-	nossl = args.nossl
-	delete = args.delete
-	attachments = args.attachment
-	goToPage = not args.nogo
-	contents = args.contents
-	
-	if username is None:
-		print 'Error: Username not specified by environment variable or option.'
-		sys.exit(1)
-		
-	if password is None:
-		print 'Error: Password not specified by environment variable or option.'
-		sys.exit(1)
-		
-	if orgname is None:
-		print 'Error: Org Name not specified by environment variable or option.'
-		sys.exit(1)
-	
-	if not os.path.exists(markdownFile):
-		print 'Error: Markdown file: %s does not exist.' % (markdownFile)
-		sys.exit(1)
-	
-	if spacekey is None:
-		spacekey='~%s' % (username)
-	
-	wikiUrl = 'https://%s.atlassian.net/wiki' % orgname
-	if nossl:
-		wikiUrl.replace('https://','http://')
-			
-except Exception, err:
-	print '\n\nException caught:\n%s ' % (err)
-        print '\nFailed to process command line arguments. Exiting.'
-        sys.exit(1)
-	
-# Convert html code blocks to Confluence macros
-def convertCodeBlock(html):
-	codeBlocks = re.findall('<pre><code.*?>.*?<\/code><\/pre>', html, re.DOTALL)
-	if codeBlocks:
-		for tag in codeBlocks:
-			
-			confML = '<ac:structured-macro ac:name="code">'
-			confML = confML + '<ac:parameter ac:name="theme">Midnight</ac:parameter>'
-			confML = confML + '<ac:parameter ac:name="linenumbers">true</ac:parameter>'
-			
-			lang = re.search('code class="(.*)"', tag)
-			if lang:
-				lang = lang.group(1)
-			else:
-				lang = 'none'
-				
-			confML = confML + '<ac:parameter ac:name="language">' + lang + '</ac:parameter>'
-			content = re.search('<pre><code.*?>(.*?)<\/code><\/pre>', tag, re.DOTALL).group(1)
-			content = '<ac:plain-text-body><![CDATA[' + content + ']]></ac:plain-text-body>'
-			confML = confML + content + '</ac:structured-macro>'
-			confML = confML.replace('&lt;', '<').replace('&gt;', '>')
-			confML = confML.replace('&quot;', '"').replace('&amp;', '&')
-			
-			html = html.replace(tag, confML)
-	
-	return html
+from os import getenv
+from urllib.parse import quote_plus, urljoin, urlparse
 
-# Converts html for info, note or warning macros
-def convertInfoMacros(html):
-	
-	infoTag = '<p><ac:structured-macro ac:name="info"><ac:rich-text-body><p>'
-	noteTag = infoTag.replace('info','note')
-	warningTag = infoTag.replace('info','warning')
-	closeTag = '</p></ac:rich-text-body></ac:structured-macro></p>'
-	
-	# Custom tags converted into macros
-	html=html.replace('<p>~?', infoTag).replace('?~</p>', closeTag)
-	html=html.replace('<p>~!', noteTag).replace('!~</p>', closeTag)
-	html=html.replace('<p>~%', warningTag).replace('%~</p>', closeTag)
-		
-	# Convert block quotes into macros
-	quotes = re.findall('<blockquote>(.*?)</blockquote>', html, re.DOTALL)
-	if quotes:
-		for q in quotes:
-			note = re.search('^<.*>Note', q.strip(), re.IGNORECASE)
-			warning = re.search('^<.*>Warning', q.strip(), re.IGNORECASE)
-				
-			if note:
-				cleanTag = stripType(q, 'Note')
-				macroTag = cleanTag.replace('<p>', noteTag).replace('</p>', closeTag).strip()
-			elif warning:
-				cleanTag = stripType(q, 'Warning')
-				macroTag = cleanTag.replace('<p>', warningTag).replace('</p>', closeTag).strip()
-			else:
-				macroTag = q.replace('<p>', infoTag).replace('</p>', closeTag).strip()
-			
-			html = html.replace('<blockquote>%s</blockquote>' % q, macroTag)
-	return html
-	
-# Strips Note or Warning tags from html in various formats
-def stripType(tag, type):
-	tag = re.sub('%s:\s' % type, '', tag.strip(), re.IGNORECASE)
-	tag = re.sub('%s\s:\s' % type, '', tag.strip(), re.IGNORECASE)
-	tag = re.sub('<.*?>%s:\s<.*?>' % type, '', tag, re.IGNORECASE)
-	tag = re.sub('<.*?>%s\s:\s<.*?>' % type, '', tag, re.IGNORECASE)
-	tag = re.sub('<(em|strong)>%s:<.*?>\s' % type, '', tag, re.IGNORECASE)
-	tag = re.sub('<(em|strong)>%s\s:<.*?>\s' % type, '', tag, re.IGNORECASE)
-	tag = re.sub('<(em|strong)>%s<.*?>:\s' % type, '', tag, re.IGNORECASE)
-	tag = re.sub('<(em|strong)>%s\s<.*?>:\s' % type, '', tag, re.IGNORECASE)
-	stringStart = re.search('<.*?>', tag)
-	tag = upperChars(tag, [stringStart.end()])
-	return tag
-	
-# Make characters uppercase in string
-def upperChars(string, indices):
-	upperString = "".join(c.upper() if i in indices else c for i, c in enumerate(string))
-	return upperString
+from bs4 import BeautifulSoup
 
-# Process references
-def processRefs(html):
-	refs = re.findall('\n(\[\^(\d)\].*)|<p>(\[\^(\d)\].*)', html)
-	
-	if len(refs) > 0:
-			
-		for ref in refs:
-			if ref[0]:
-				fullRef = ref[0].replace('</p>', '').replace('<p>', '')
-				refID = ref[1]
-			else:
-				fullRef = ref[2]
-				refID = ref[3]
-		
-			fullRef = fullRef.replace('</p>', '').replace('<p>', '')
-			html = html.replace(fullRef, '')
-			href = re.search('href="(.*?)"', fullRef).group(1)
-		
-			superscript = '<a id="test" href="%s"><sup>%s</sup></a>' % (href, refID)
-			html = html.replace('[^%s]' % refID, superscript)
-	
-	return html
+WELCOME = """
+------------------------
+Markdown Confluence Sync
+------------------------
 
-# Retrieve page details by title
-def getPage(title):
-	print '\tRetrieving page information: %s' % title
-	url = '%s/rest/api/content?title=%s&spaceKey=%s&expand=version,ancestors' % (wikiUrl, urllib.quote_plus(title), spacekey)
+Markdown file:	'{}'
+Space Key:	'{}'
+Title:		'{}'
+"""
+USAGE = """
+Usage: md2conf markdown.md [spacekey]
 
-	s = requests.Session()
-	s.auth = (username, password)
-	
-	r = s.get(url)
-	
-	# Check for errors
-	try:
-		r.raise_for_status()
-	except Exception as err:
-		error = re.search('^404', err.message)
-		if error:
-			print '\nError: Page not found. Check the following are correct:'
-			print '\tSpace Key : %s' % spacekey
-			print '\tOrganisation Name: %s\n' % orgname
-		sys.exit(1)
-		
-	data = r.json()
-	
-	if len(data[u'results']) >= 1:
-		pageId = data[u'results'][0][u'id']
-		versionNum =  data[u'results'][0][u'version'][u'number']
-		link = '%s%s' % (wikiUrl, data[u'results'][0][u'_links'][u'webui'])
-		
-		pageInfo = collections.namedtuple('PageInfo', ['id','version', 'link'])
-		p = pageInfo(pageId, versionNum, link)
-		return p
-	else:
-		return False
+Environment Variables:
+    * CONFLUENCE_USERNAME
+    * CONFLUENCE_PASSWORD
+    * CONFLUENCE_ORGNAME
+"""
+MD_EXTENSIONS = [
+        'markdown.extensions.tables',
+        'markdown.extensions.fenced_code',
+        ]
+TOC_PARAMS = {
+        'printable': 'true',
+        'style': 'disc',
+        'maxLevel': '5',
+        'minLevel': '1',
+        'class': 'rm-contents',
+        'exclude': '',
+        'type': 'list',
+        'outline': 'false',
+        'include': '',
+        }
+pageInfo = collections.namedtuple('PageInfo', ['id','version', 'link'])
 
-# Scan for images and upload as attachments if found
-def addImages(pageId, html):
-	sourceFolder = os.path.dirname(os.path.abspath(markdownFile))
-	
-	for tag in re.findall('<img(.*?)\/>', html):
-		relPath = re.search('src="(.*?)"', tag).group(1)
-		altText = re.search('alt="(.*?)"', tag).group(1)
-		absPath = os.path.join(sourceFolder, relPath)
-		basename = os.path.basename(relPath)
-		uploadAttachment(pageId, absPath, altText)
-		if re.search('http.*', relPath) is None:
-			html = html.replace('%s'%(relPath),'/wiki/download/attachments/%s/%s'%(pageId, basename))
-	
-	return html
+class MD2Confluence(object):
+    def __init__(self, args):
+        self.args = args
+        self.sourceFolder = os.path.dirname(os.path.abspath(self.args.markdownFile))
 
-# Add contents page
-def addContents(html):
-	contentsMarkup = '<ac:structured-macro ac:name="toc">\n<ac:parameter ac:name="printable">true</ac:parameter>\n<ac:parameter ac:name="style">disc</ac:parameter>'
-  	contentsMarkup = contentsMarkup + '<ac:parameter ac:name="maxLevel">5</ac:parameter>\n<ac:parameter ac:name="minLevel">1</ac:parameter>'
-  	contentsMarkup = contentsMarkup + '<ac:parameter ac:name="class">rm-contents</ac:parameter>\n<ac:parameter ac:name="exclude"></ac:parameter>\n<ac:parameter ac:name="type">list</ac:parameter>'
- 	contentsMarkup = contentsMarkup + '<ac:parameter ac:name="outline">false</ac:parameter>\n<ac:parameter ac:name="include"></ac:parameter>\n</ac:structured-macro>'
- 	
- 	
- 	html = contentsMarkup + '\n' + html
- 	return html
+        # Get base url for confluence
+        self.wikiUrl = 'https://{}.atlassian.net/'.format(self.args.orgname)
+        if self.args.nossl:
+                self.wikiUrl.replace('https://','http://')
 
-# Add attachments for an array of files
-def addAttachments(pageId, files):
-	sourceFolder = os.path.dirname(os.path.abspath(markdownFile))
-	
-	if files:
-		for file in files:
-			uploadAttachment(pageId, os.path.join(sourceFolder, file), '')
-	
-# Create a new page
-def createPage(title, body, ancestors):
-	print '\nCreating page...'
-	
-	url = '%s/rest/api/content/' % wikiUrl
-	
-	s = requests.Session()
-	s.auth = (username, password)
-	s.headers.update({'Content-Type' : 'application/json'})
-	
-	newPage = { 'type' : 'page', \
-	 'title' : title, \
-	 'space' : {'key' : spacekey}, \
-	 'body' : { \
-	 	'storage' : { \
-	 		'value' : body, \
-	 		'representation' : 'storage' \
-	 		} \
-	 	}, \
-	 'ancestors' : ancestors \
-	 }
-	
-	r = s.post(url, data=json.dumps(newPage))
-	r.raise_for_status()
-	
-	if r.status_code == 200:
-		data = r.json()
-		spaceName = data[u'space'][u'name']
-		pageId = data[u'id']
-		version = data[u'version'][u'number']
-		link = '%s%s' %(wikiUrl, data[u'_links'][u'webui'])
-		
-		print '\nPage created in %s with ID: %s.' % (spaceName, pageId)
-		print 'URL: %s' % link
-		
-		imgCheck = re.search('<img(.*?)\/>', body)
-		if imgCheck or attachments:
-			print '\tAttachments found, update procedure called.'
-			updatePage(pageId, title, body, version, ancestors, attachments)
-		else:
-			if goToPage:
-				webbrowser.open(link)
-	else:
-		print '\nCould not create page.'
-		sys.exit(1)
+        with open(self.args.markdownFile, 'r') as inp:
+            html=markdown.markdown(inp.read(), extensions=MD_EXTENSIONS)
+            self.soup = BeautifulSoup(html, "html.parser")
 
-# Delete a page
-def deletePage(pageId):
-	print '\nDeleting page...'
-	url = '%s/rest/api/content/%s' % (wikiUrl, pageId)
-	
-	s = requests.Session()
-	s.auth = (username, password)
-	s.headers.update({'Content-Type' : 'application/json'})
+        self.init_session()
 
-	r = s.delete(url)
-	r.raise_for_status()
-	
-	if r.status_code == 204:
-		print 'Page %s deleted successfully.' % pageId
-	else:
-		print 'Page %s could not be deleted.' % pageId
+        # Extract the document title
+        self.title = self.soup.find('h1').extract()
 
-# Update a page
-def updatePage(pageId, title, body, version, ancestors, attachments):
-	print '\nUpdating page...'
-	
-	# Add images and attachments
-	body = addImages(pageId, body)
-	addAttachments(pageId, attachments)
-	
-	url = '%s/rest/api/content/%s' % (wikiUrl, pageId)
-	
-	s = requests.Session()
-	s.auth = (username, password)
-	s.headers.update({'Content-Type' : 'application/json'})
-	
-	pageJson = { \
-  		"id" : pageId, \
-  		"type" : "page", \
-  		"title" : title, \
-  		"space" : { "key": spacekey }, \
-  		"body" : { \
-    		"storage": { \
-     		 	"value": body, \
-      			"representation": "storage" \
-   			 } \
-		}, \
-		"version" : { \
-			"number" : version+1 \
-  		}, \
-  		'ancestors' : ancestors \
-	}
-	
-	r = s.put(url, data=json.dumps(pageJson))
-	r.raise_for_status()
-	
-	if r.status_code == 200:
-		data = r.json()
-		link = '%s%s' %(wikiUrl, data[u'_links'][u'webui'])
-		
-		print "\nPage updated successfully."
-		print 'URL: %s' % link
-		if goToPage:
-			webbrowser.open(link)
-	else:
-		print "\nPage could not be updated."
+        welcome_msg = WELCOME.format(
+                self.args.markdownFile, self.args.spacekey, self.title.text)
+        print(welcome_msg)
 
-def getAttachment(pageId, filename):
-	url = '%s/rest/api/content/%s/child/attachment?filename=%s' % (wikiUrl, pageId, filename)
-	
-	s = requests.Session()
-	s.auth = (username, password)
-	
-	r = s.get(url)
-	r.raise_for_status()
-	data = r.json()
-	
-	if len(data[u'results']) >= 1:
-		attId = data[u'results'][0]['id']	
-		attInfo = collections.namedtuple('AttachmentInfo', ['id'])
-		a = attInfo(attId)
-		return a
-	else:
-		return False
+        # Add a TOC
+        self.addContents()
 
-# Upload an attachment	
-def uploadAttachment(pageId, file, comment):
-	
-	if re.search('http.*', file):
-		return False
-	
-	contentType = mimetypes.guess_type(file)[0]
-	fileName = os.path.basename(file)
-	
-	fileToUpload = {
-		'comment' : comment,
-		'file' : (fileName, open(file, 'rb'), contentType, {'Expires': '0'})
-	}
-	
-	attachment = getAttachment(pageId, fileName)
-	if attachment:
-		url = '%s/rest/api/content/%s/child/attachment/%s/data' % (wikiUrl, pageId, attachment.id)
-	else:
-		url = '%s/rest/api/content/%s/child/attachment/' % (wikiUrl, pageId)
-	
-	s = requests.Session()
-	s.auth = (username, password)
-	s.headers.update({'X-Atlassian-Token' : 'no-check'})
-	
-	print '\tUploading attachment %s...' % fileName
-	
-	r = s.post(url, files=fileToUpload)
-	r.raise_for_status()
-	
+        page = self.getPage()
 
-def main():
-	print '\n\n\t\t----------------------------------'
-	print '\t\tMarkdown to Confluence Upload Tool'
-	print '\t\t----------------------------------\n\n'
+        if self.args.delete:
+            if page:
+                self.deletePage(page)
+            sys.exit(1)
 
-	print 'Markdown file:\t%s' % markdownFile
-	print 'Space Key:\t%s' % spacekey
-	
-	with open(markdownFile, 'r') as f:
-		title = f.readline().strip()
-		f.seek(0)
-		mdContent = f.read()
-		
-	print 'Title:\t\t%s' % title
-	
-	with codecs.open(markdownFile,'r','utf-8') as f:
-		html=markdown.markdown(f.read(), extensions = ['markdown.extensions.tables', 'markdown.extensions.fenced_code'])
-	
-	html = '\n'.join(html.split('\n')[1:])
-	
-	html = convertInfoMacros(html)
-	html = convertCodeBlock(html)
-	
-	if contents:
-		html = addContents(html)
+        if self.args.ancestor:
+            parentPage = self.getPage(self.args.ancestor)
+            if parentPage:
+                self.ancestors = [{'type': 'page','id': parentPage.id}]
+            else:
+                print('* Error: Parent page does not exist: {}'.format(self.args.ancestor))
+                sys.exit(1)
+        else:
+            self.ancestors = []
 
-	html = processRefs(html)
+        if page:
+            self.updatePage(page)
+        else:
+            self.createPage()
 
-	print '\nChecking if Atlas page exists...'
-	page = getPage(title)
-	
-	if delete and page:
-		deletePage(page.id)
-		sys.exit(1)
-		
-	if ancestor:
-		parentPage = getPage(ancestor)
-		if parentPage:
-			ancestors = [{'type':'page','id':parentPage.id}]
-		else:
-			print 'Error: Parent page does not exist: %s' % ancestor
-			sys.exit(1)
-	else:
-		ancestors = []
-	
-	if page:
-		updatePage(page.id, title, html, page.version, ancestors, attachments)
-	else:
-		createPage(title, html, ancestors)
-	
-	print '\nMarkdown Converter completed successfully.'
+    def init_session(self):
+        self.session = requests.Session()
+        self.session.auth = (self.args.username, self.args.password)
+
+    # Add contents page
+    def addContents(self):
+        if self.args.contents:
+            toc = self.soup.new_tag('ac:structured-macro', **{'ac:name': 'toc'})
+
+            for key, val in TOC_PARAMS.iteritems():
+                param = self.soup.new_tag('ac:parameter', **{'ac:name': key})
+                param.string = val
+                toc.append(param)
+
+            self.soup.body.insert(0, toc)
+
+    # Retrieve page details by title
+    def getPage(self):
+        print('* Checking if page exists...')
+        print(" - Retrieving page information: '{}'".format(self.title.text))
+        url = urljoin(self.wikiUrl, '/wiki/rest/api/content')
+
+        r = self.session.get(url, params={
+            'title': self.title.text,
+            'spaceKey': self.args.spacekey,
+            'expand': 'version,ancestors',
+            })
+
+        # Check for errors
+        if r.status_code == 404:
+            print('* Error: Page not found. Check the following are correct:')
+            print(" - Space Key : '{}'".format(self.args.spacekey))
+            print(" - Organisation Name: '{}'".format(self.args.orgname))
+            sys.exit(1)
+
+        data = r.json()
+
+        if len(data['results']) >= 1:
+            pageId = data['results'][0]['id']
+            versionNum =  data['results'][0]['version']['number']
+            rel_path = os.path.join('/wiki', data['results'][0]['_links']['webui'].lstrip('/'))
+            link = urljoin(self.wikiUrl, rel_path)
+
+            return pageInfo(pageId, versionNum, link)
+
+    # Create a new page
+    def createPage(self):
+        print('* Creating page...')
+
+        url = urljoin(self.wikiUrl, '/wiki/rest/api/content/')
+
+        newPage = {'type': 'page',
+                'title': self.title.text,
+                'space': {'key': self.args.spacekey},
+                'body': {
+                    'storage': {
+                        'value': self.soup.prettify(),
+                        'representation': 'storage',
+                        },
+                    },
+                'ancestors': self.ancestors,
+                }
+
+        r = self.session.post(
+                url, data=json.dumps(newPage),
+                headers={'Content-Type' : 'application/json'},
+                )
+        r.raise_for_status()
+
+        if r.status_code == 200:
+            data = r.json()
+            spaceName = data['space']['name']
+            rel_path = os.path.join('/wiki', data['_links']['webui'])
+            page = pageInfo(
+                    data['id'],
+                    data['version']['number'],
+                    urljoin(self.wikiUrl, rel_path),
+                    )
+
+            print('* Page created in {} with ID: {}.'.format(spaceName, page.id))
+            print(" - URL: '{}'".format(page.link))
+
+            imgCheck = self.soup.find_all('img')
+            if imgCheck or self.args.attachments:
+                print('* Attachments found, update procedure called.')
+                self.updatePage(page)
+        else:
+            print('* Could not create page.')
+            sys.exit(1)
+
+    # Update a page
+    def updatePage(self, page):
+        print('* Updating page...')
+
+        # Add images and attachments
+        self.addImages(page)
+        #self.addAttachments(page)
+
+        url = urljoin(self.wikiUrl, '/wiki/rest/api/content/{}'.format(page.id))
+
+        payload = {
+                "type": "page",
+                "title": self.title.text,
+                "body": {
+                    "storage": {
+                        "value": self.soup.prettify(),
+                        "representation": "storage",
+                        },
+                    },
+                "version": {
+                    "number": page.version+1
+                    },
+                "ancestors": self.ancestors,
+                }
+
+        r = self.session.put(
+                url,
+                data=json.dumps(payload),
+                headers={'Content-Type' : 'application/json'},
+                )
+        r.raise_for_status()
+
+        if r.status_code == 200:
+            data = r.json()
+            rel_path = os.path.join('/wiki', data['_links']['webui'].lstrip('/'))
+            link = urljoin(self.wikiUrl, rel_path)
+
+            print(" - Success: '{}'".format(link))
+        else:
+            print(" - Page could not be updated.")
+
+    # Delete a page
+    def deletePage(self, page):
+        print('* Deleting page...')
+        url = urljoin(self.wikiUrl, '/wiki/rest/api/content/{}'.format(page.id))
+
+        r = self.session.delete(url, headers={'Content-Type' : 'application/json'})
+        r.raise_for_status()
+
+        if r.status_code == 204:
+            print(' - Page {} deleted successfully.'.format(page.id))
+        else:
+            print(' - Page {} could not be deleted.'.format(page.id))
+
+
+    # Scan for images and upload as attachments if found
+    def addImages(self, page):
+        for img in self.soup.find_all('img'):
+            img['src'] = self.uploadAttachment(page, img['src'], img['alt'])
+
+    # Add attachments for an array of files
+    def addAttachments(self, page):
+        for path in self.args.attachments:
+            self.uploadAttachment(page, path, '')
+
+    def getAttachment(self, page, filename):
+        url = urljoin(
+                self.wikiUrl,
+                '/wiki/rest/api/content/{}/child/attachment'.format(page.id))
+
+        r = self.session.get(url, params={
+            'filename': filename,
+            })
+        r.raise_for_status()
+
+        data = r.json()
+        if data['results']:
+            return '/wiki/rest/api/content/{}/child/attachment/{}/data'.format(
+                    page.id, data['results'][0]['id'])
+
+        return '/wiki/rest/api/content/{}/child/attachment/'.format(page.id)
+
+    # Upload an attachment
+    def uploadAttachment(self, page, rel_path, comment):
+        if urlparse(rel_path).scheme:
+            return rel_path
+        basename = os.path.basename(rel_path)
+        print(' - Uploading attachment {}...'.format(basename))
+
+        attachment = self.getAttachment(page, basename)
+        url = urljoin(self.wikiUrl, attachment)
+
+        full_path = os.path.join(self.sourceFolder, rel_path)
+        contentType = mimetypes.guess_type(full_path)[0]
+        payload = {
+            'comment' : comment,
+            'file' : (basename, open(full_path, 'rb'), contentType, {'Expires': '0'})
+        }
+
+        r = self.session.post(
+                url,
+                files=payload,
+                headers={'X-Atlassian-Token' : 'no-check'},
+                )
+        r.raise_for_status()
+
+        return '/wiki/download/attachments/{}/{}'.format(page.id, basename)
 
 if __name__ == "__main__":
-	main()
+    # ArgumentParser to parse arguments and options
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("markdownFile", help="Full path of the markdown file to convert and upload.")
+    parser.add_argument('spacekey', nargs='?', default='', help="Confluence Space key for the page. If omitted, will use user space.")
+    parser.add_argument('-u', '--username', default=getenv('CONFLUENCE_USERNAME', None), help='Confluence username if $CONFLUENCE_USERNAME not set.')
+    parser.add_argument('-p', '--password', default=getenv('CONFLUENCE_PASSWORD', None), help='Confluence password if $CONFLUENCE_PASSWORD not set.')
+    parser.add_argument('-o', '--orgname', default=getenv('CONFLUENCE_ORGNAME', None), help='Confluence organisation if $CONFLUENCE_ORGNAME not set. e.g. https://XXX.atlassian.net')
+    parser.add_argument('-a', '--ancestor', help='Parent page under which page will be created or moved.')
+    parser.add_argument('-t', '--attachments', nargs='+', help='Attachment(s) to upload to page. Paths relative to the markdown file.')
+    parser.add_argument('-c', '--contents', action='store_true', default=False, help='Use this option to generate a contents page.')
+    parser.add_argument('-n', '--nossl', action='store_true', default=False, help='Use this option if NOT using SSL. Will use HTTP instead of HTTPS.')
+    parser.add_argument('-d', '--delete', action='store_true', default=False, help='Use this option to delete the page instead of create it.')
+    args = parser.parse_args()
+
+    if not all([args.username, args.password, args.orgname, args.spacekey]):
+        print(USAGE)
+        sys.exit(1)
+
+    if not os.path.exists(args.markdownFile):
+        print('* Error: Markdown file: {} does not exist.'.format(args.markdownFile))
+        sys.exit(1)
+
+    MD2Confluence(args)

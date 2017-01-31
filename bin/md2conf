@@ -61,10 +61,16 @@ class MD2Confluence(object):
         self.sourceFolder = os.path.dirname(
             os.path.abspath(self.args.markdownFile))
 
-        # Get base url for confluence
-        self.wikiUrl = 'https://{}.atlassian.net/'.format(self.args.orgname)
-        if self.args.nossl:
-            self.wikiUrl.replace('https://', 'http://')
+        # Get base URL for confluence
+        schema = 'http' if self.args.nossl else 'https'
+        # TODO: this is not (yet) the wiki URL and should not be called like
+        # that
+        self.wikiUrl = '{}://{}.atlassian.net/'.format(
+            schema,
+            self.args.orgname
+        )
+        # a base URL that is used to setup authentication headers
+        self.authUrl = self.wikiUrl + '/wiki'
 
         with open(self.args.markdownFile, 'r') as inp:
             html = markdown.markdown(inp.read(), extensions=MD_EXTENSIONS)
@@ -108,6 +114,10 @@ class MD2Confluence(object):
     def init_session(self):
         self.session = requests.Session()
         self.session.auth = (self.args.username, self.args.password)
+        # do a request to the auth URL to set up authentication headers (This
+        # step might not be required in all setups but it does not hurt,
+        # either.)
+        self.session.get(self.authUrl)
 
     # Add contents page
     def addContents(self):
@@ -338,7 +348,7 @@ if __name__ == "__main__":
     parser.add_argument('-n', '--nossl', action='store_true', default=False,
                         help='Use this option if NOT using SSL. Will use HTTP instead of HTTPS.')
     parser.add_argument('-d', '--delete', action='store_true', default=False,
-                        help='Use this option to delete the page instead of creating it.')
+                        help='Use this option to delete the page instead of creating it.')  # TODO will it be overwritten then or just deleted?
     args = parser.parse_args()
 
     if not all([args.username, args.password, args.orgname]):

@@ -78,6 +78,10 @@ The original markdown to HTML conversion is performed by the Python **markdown**
 
 Standard markdown syntax for images and code blocks will be automatically converted. The images are uploaded as attachments and the references updated in the HTML. The code blocks will be converted to the Confluence Code Block macro and also supports syntax highlighting.
 
+### Additional usage information
+
+* The title of the page is determined by the contents of the first <h1> element.
+
 ### Information, Note and Warning Macros
 
 > **Warning:** Any blockquotes used will implement an information macro. This could potentially harm your formatting.

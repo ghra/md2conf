@@ -124,6 +124,12 @@ class MD2Confluence(object):
         print(" - Retrieving page information: '{}'".format(self.title.text))
         url = urljoin(self.wikiUrl, '/wiki/rest/api/content')
 
+        self.session.get(url, params={
+            'title': self.title.text,
+            'spaceKey': self.args.spacekey,
+            'expand': 'version,ancestors',
+            })
+
         r = self.session.get(url, params={
             'title': self.title.text,
             'spaceKey': self.args.spacekey,
@@ -245,7 +251,6 @@ class MD2Confluence(object):
             print(' - Page {} deleted successfully.'.format(page.id))
         else:
             print(' - Page {} could not be deleted.'.format(page.id))
-
 
     # Scan for images and upload as attachments if found
     def addImages(self, page):

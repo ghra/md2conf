@@ -20,6 +20,7 @@ Python should be installed with the following required modules:
 * webbrowser
 * urllib
 * argparse
+* bs4
 
 Instructions on installing Python and modules can be found [here](https://rittmanmead.atlassian.net/wiki/display/TECH/Python).
 

@@ -45,7 +45,7 @@ TOC_PARAMS = {
 pageInfo = collections.namedtuple('PageInfo', ['id', 'version', 'link'])
 
 
-class MarkdownConverter(object):
+class MarkdownConfluenceSync(object):
     '''
     classdocs
     '''
@@ -56,21 +56,26 @@ class MarkdownConverter(object):
         self.sourceFolder = os.path.dirname(
             os.path.abspath(self.args.markdownFile))
 
-        # Get base URL for confluence
+        self.setUpUrls()
+
+        self.convertMarkdownToHtml()
+
+    def setUpUrls(self):
         schema = 'http' if self.args.nossl else 'https'
-        # TODO: this is not (yet) the wiki URL and should not be called like
-        # that
-        self.wikiUrl = '{}://{}.atlassian.net/'.format(
+
+        self.baseUrl = '{}://{}.atlassian.net/'.format(
             schema,
             self.args.orgname
         )
-        # a base URL that is used to setup authentication headers
-        self.authUrl = self.wikiUrl + '/wiki'
+        # a URL that is used to setup authentication headers
+        self.authUrl = self.baseUrl + '/wiki'
 
+    def convertMarkdownToHtml(self):
         with open(self.args.markdownFile, 'r') as inp:
             html = markdown.markdown(inp.read(), extensions=MD_EXTENSIONS)
             self.soup = BeautifulSoup(html, "html.parser")
 
+    def run(self):
         self.init_session()
 
         # Extract the document title
@@ -133,7 +138,7 @@ class MarkdownConverter(object):
     def getPage(self):
         print('* Checking if page exists...')
         print(" - Retrieving page information: '{}'".format(self.title.text))
-        url = urljoin(self.wikiUrl, '/wiki/rest/api/content')
+        url = urljoin(self.baseUrl, '/wiki/rest/api/content')
 
         self.session.get(url, params={
             'title': self.title.text,
@@ -161,7 +166,7 @@ class MarkdownConverter(object):
             versionNum = data['results'][0]['version']['number']
             rel_path = os.path.join(
                 '/wiki', data['results'][0]['_links']['webui'].lstrip('/'))
-            link = urljoin(self.wikiUrl, rel_path)
+            link = urljoin(self.baseUrl, rel_path)
 
             return pageInfo(pageId, versionNum, link)
 
@@ -169,7 +174,7 @@ class MarkdownConverter(object):
     def createPage(self):
         print('* Creating page...')
 
-        url = urljoin(self.wikiUrl, '/wiki/rest/api/content/')
+        url = urljoin(self.baseUrl, '/wiki/rest/api/content/')
 
         newPage = {'type': 'page',
                    'title': self.title.text,
@@ -196,7 +201,7 @@ class MarkdownConverter(object):
             page = pageInfo(
                 data['id'],
                 data['version']['number'],
-                urljoin(self.wikiUrl, rel_path),
+                urljoin(self.baseUrl, rel_path),
             )
 
             print(
@@ -220,7 +225,7 @@ class MarkdownConverter(object):
         # self.addAttachments(page)
 
         url = urljoin(
-            self.wikiUrl, '/wiki/rest/api/content/{}'.format(page.id))
+            self.baseUrl, '/wiki/rest/api/content/{}'.format(page.id))
 
         payload = {
             "type": "page",
@@ -248,7 +253,7 @@ class MarkdownConverter(object):
             data = r.json()
             rel_path = os.path.join(
                 '/wiki', data['_links']['webui'].lstrip('/'))
-            link = urljoin(self.wikiUrl, rel_path)
+            link = urljoin(self.baseUrl, rel_path)
 
             print(" - Success: '{}'".format(link))
         else:
@@ -258,7 +263,7 @@ class MarkdownConverter(object):
     def deletePage(self, page):
         print('* Deleting page...')
         url = urljoin(
-            self.wikiUrl, '/wiki/rest/api/content/{}'.format(page.id))
+            self.baseUrl, '/wiki/rest/api/content/{}'.format(page.id))
 
         r = self.session.delete(
             url, headers={'Content-Type': 'application/json'})
@@ -281,7 +286,7 @@ class MarkdownConverter(object):
 
     def getAttachment(self, page, filename):
         url = urljoin(
-            self.wikiUrl,
+            self.baseUrl,
             '/wiki/rest/api/content/{}/child/attachment'.format(page.id))
 
         r = self.session.get(url, params={
@@ -304,7 +309,7 @@ class MarkdownConverter(object):
         print(' - Uploading attachment {}...'.format(basename))
 
         attachment = self.getAttachment(page, basename)
-        url = urljoin(self.wikiUrl, attachment)
+        url = urljoin(self.baseUrl, attachment)
 
         full_path = os.path.join(self.sourceFolder, rel_path)
         contentType = mimetypes.guess_type(full_path)[0]

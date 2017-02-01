@@ -7,7 +7,7 @@ from os import getenv
 import os.path
 import sys
 
-from MarkdownConverter import MarkdownConverter
+from MarkdownConfluenceSync import MarkdownConfluenceSync
 import argparse
 
 if __name__ == "__main__":
@@ -53,4 +53,4 @@ if __name__ == "__main__":
         print()
         sys.exit(parser.format_help())
 
-    MarkdownConverter(args).run()
+    c = MarkdownConfluenceSync(args).run()

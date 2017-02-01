@@ -1,25 +1,17 @@
 #!/usr/bin/python3
 """
-Create of update Confluence pages from markdown
+Create or update Confluence pages from markdown
 """
 
 from os import getenv
 import os.path
 import sys
+
+from MarkdownConverter import MarkdownConverter
 import argparse
 
-from bin import MarkdownConverter
-
-USAGE = """
-Usage: md2conf markdown.md [spacekey]
-
-Environment Variables:
-    * CONFLUENCE_USERNAME
-    * CONFLUENCE_PASSWORD
-    * CONFLUENCE_ORGNAME
-"""
-
 if __name__ == "__main__":
+
     # ArgumentParser to parse arguments and options
     parser = argparse.ArgumentParser()
 
@@ -45,15 +37,20 @@ if __name__ == "__main__":
                         help='Use this option to delete the page instead of creating it.')  # TODO will it be overwritten then or just deleted?
     args = parser.parse_args()
 
-    if not all([args.username, args.password, args.orgname]):
-        print(USAGE)
-        sys.exit(1)
-        # TODO: print an error message (will count as exit code 1)
-
     if not os.path.exists(args.markdownFile):
+        sys.exit(
+            'Error: Markdown file: "{}" does not exist.'.format(
+                os.path.abspath(args.markdownFile)
+            )
+        )
+
+    if not all([args.username, args.password, args.orgname]):
         print(
-            '* Error: Markdown file: {} does not exist.'.format(args.markdownFile))
-        sys.exit(1)
-        # TODO: print an error message (will count as exit code 1)
+            'Please provide a username, a password, and an organisation name ' +
+            'explicitly or via environment variables, see below. Both can ' +
+            'be mixed.'
+        )
+        print()
+        sys.exit(parser.format_help())
 
     MarkdownConverter(args).run()

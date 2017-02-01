@@ -45,7 +45,7 @@ TOC_PARAMS = {
 pageInfo = collections.namedtuple('PageInfo', ['id', 'version', 'link'])
 
 
-class MyClass(object):
+class MarkdownConverter(object):
     '''
     classdocs
     '''

@@ -53,4 +53,4 @@ if __name__ == "__main__":
         print()
         sys.exit(parser.format_help())
 
-    c = MarkdownConfluenceSync(args).run()
+    MarkdownConfluenceSync(args).run()

@@ -11,8 +11,8 @@ import os.path
 import sys
 from urllib.parse import urljoin, urlparse
 
-from bs4 import BeautifulSoup
-import markdown
+from MarkdownHtmlConverter import MarkdownHtmlConverter
+
 import requests
 
 
@@ -26,10 +26,6 @@ Space Key:    '{}'
 Title:        '{}'
 """
 
-MD_EXTENSIONS = [
-    'markdown.extensions.tables',
-    'markdown.extensions.fenced_code',
-]
 
 TOC_PARAMS = {
     'printable': 'true',
@@ -58,8 +54,6 @@ class MarkdownConfluenceSync(object):
 
         self.setUpUrls()
 
-        self.convertMarkdownToHtml()
-
     def setUpUrls(self):
         schema = 'http' if self.args.nossl else 'https'
 
@@ -70,13 +64,11 @@ class MarkdownConfluenceSync(object):
         # a URL that is used to setup authentication headers
         self.authUrl = self.baseUrl + '/wiki'
 
-    def convertMarkdownToHtml(self):
-        with open(self.args.markdownFile, 'r') as inp:
-            html = markdown.markdown(inp.read(), extensions=MD_EXTENSIONS)
-            self.soup = BeautifulSoup(html, "html.parser")
-
     def run(self):
         self.init_session()
+
+        self.soup = MarkdownHtmlConverter.convertMarkdownToHtml(
+            self.args.markdownFile)
 
         # Extract the document title
         self.title = self.soup.find('h1').extract()

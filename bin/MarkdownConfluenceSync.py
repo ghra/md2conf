@@ -16,17 +16,6 @@ from MarkdownHtmlConverter import MarkdownHtmlConverter
 import requests
 
 
-WELCOME = """
-------------------------
-Markdown Confluence Sync
-------------------------
-
-Markdown file:    '{}'
-Space Key:    '{}'
-Title:        '{}'
-"""
-
-
 TOC_PARAMS = {
     'printable': 'true',
     'style': 'disc',
@@ -65,20 +54,20 @@ class MarkdownConfluenceSync(object):
         self.authUrl = self.baseUrl + '/wiki'
 
     def run(self):
-        self.init_session()
-
-        self.soup = MarkdownHtmlConverter.convertMarkdownToHtml(
+        self.markdownHtmlConverter = MarkdownHtmlConverter(
             self.args.markdownFile)
 
         # Extract the document title
-        self.title = self.soup.find('h1').extract()
+        self.title = self.markdownHtmlConverter.getTitle()
 
-        welcome_msg = WELCOME.format(
-            self.args.markdownFile, self.args.spacekey, self.title.text)
-        print(welcome_msg)
+        self.printWelcomeMessage()
 
         # Add a TOC
+        # TODO: perhaps this should be done only if it is requested by the
+        # corresponding parameter?
         self.addContents()
+
+        self.init_session()
 
         page = self.getPage()
 
@@ -113,6 +102,21 @@ class MarkdownConfluenceSync(object):
         # either.)
         self.session.get(self.authUrl)
 
+    def printWelcomeMessage(self):
+        print('''
+------------------------
+Markdown Confluence Sync
+------------------------
+
+Markdown file: "{}"
+Space Key:     "{}"
+Title:         "{}"
+'''.format(self.args.markdownFile,
+           self.args.spacekey,  # TODO: print something if no spacekey is provided (username or so will then be the spacekey)
+           self.title
+           )
+        )
+
     # Add contents page
     def addContents(self):
         if self.args.contents:
@@ -129,17 +133,17 @@ class MarkdownConfluenceSync(object):
     # Retrieve page details by title
     def getPage(self):
         print('* Checking if page exists...')
-        print(" - Retrieving page information: '{}'".format(self.title.text))
+        print(" - Retrieving page information: '{}'".format(self.title))
         url = urljoin(self.baseUrl, '/wiki/rest/api/content')
 
         self.session.get(url, params={
-            'title': self.title.text,
+            'title': self.title,
             'spaceKey': self.args.spacekey,
             'expand': 'version,ancestors',
         })
 
         r = self.session.get(url, params={
-            'title': self.title.text,
+            'title': self.title,
             'spaceKey': self.args.spacekey,
             'expand': 'version,ancestors',
         })
@@ -169,7 +173,7 @@ class MarkdownConfluenceSync(object):
         url = urljoin(self.baseUrl, '/wiki/rest/api/content/')
 
         newPage = {'type': 'page',
-                   'title': self.title.text,
+                   'title': self.title,
                    'space': {'key': self.args.spacekey},
                    'body': {
                        'storage': {
@@ -221,7 +225,7 @@ class MarkdownConfluenceSync(object):
 
         payload = {
             "type": "page",
-            "title": self.title.text,
+            "title": self.title,
             "body": {
                     "storage": {
                         "value": self.soup.prettify(),

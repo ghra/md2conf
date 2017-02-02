@@ -30,7 +30,7 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--attachments', nargs='+',
                         help='Attachment(s) to upload to page. Paths relative to the markdown file.')
     parser.add_argument('-c', '--contents', action='store_true',
-                        default=False, help='Use this option to generate a contents page.')
+                        default=False, help='Use this option to generate a contents page.')  # TODO what does this mean? and how is it related to the addContents method and TOC in MarkdownConfluenceSync?
     parser.add_argument('-n', '--nossl', action='store_true', default=False,
                         help='Use this option if NOT using SSL. Will use HTTP instead of HTTPS.')
     parser.add_argument('-d', '--delete', action='store_true', default=False,

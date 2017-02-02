@@ -15,8 +15,13 @@ MD_EXTENSIONS = [
 
 class MarkdownHtmlConverter(object):
 
-    @classmethod
-    def convertMarkdownToHtml(cls, markdownfilename):
+    def __init__(self, markdownfilename):
+        self.convertMarkdownToHtml(markdownfilename)
+
+    def convertMarkdownToHtml(self, markdownfilename):
         with open(markdownfilename, 'r') as inp:
             html = markdown.markdown(inp.read(), extensions=MD_EXTENSIONS)
-            return BeautifulSoup(html, "html.parser")
+            self.soup = BeautifulSoup(html, "html.parser")
+
+    def getTitle(self):
+        return self.soup.find('h1').extract().text

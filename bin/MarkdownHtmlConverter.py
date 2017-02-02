@@ -12,6 +12,18 @@ MD_EXTENSIONS = [
     'markdown.extensions.fenced_code',
 ]
 
+TOC_PARAMS = {
+    'printable': 'true',
+    'style': 'disc',
+    'maxLevel': '5',
+    'minLevel': '1',
+    'class': 'rm-contents',
+    'exclude': '',
+    'type': 'list',
+    'outline': 'false',
+    'include': '',
+}
+
 
 class MarkdownHtmlConverter(object):
 
@@ -25,3 +37,16 @@ class MarkdownHtmlConverter(object):
 
     def getTitle(self):
         return self.soup.find('h1').extract().text
+
+        # Add contents page
+    def addContents(self):
+        if self.args.contents:
+            toc = self.soup.new_tag(
+                'ac:structured-macro', **{'ac:name': 'toc'})
+
+            for key, val in TOC_PARAMS.iteritems():
+                param = self.soup.new_tag('ac:parameter', **{'ac:name': key})
+                param.string = val
+                toc.append(param)
+
+            self.soup.body.insert(0, toc)

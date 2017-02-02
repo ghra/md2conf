@@ -16,7 +16,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "markdownFile", help="Full path of the markdown file to convert and upload.")
+        "markdownFile", help="Full path of the markdown file to convert and upload. If the page already exists, it will be overwritten.")
     parser.add_argument('spacekey', nargs='?', default='',
                         help="Confluence Space key for the page. If omitted, will use user space.")
     parser.add_argument('-u', '--username', default=getenv('CONFLUENCE_USERNAME',
@@ -34,7 +34,7 @@ if __name__ == "__main__":
     parser.add_argument('-n', '--nossl', action='store_true', default=False,
                         help='Use this option if NOT using SSL. Will use HTTP instead of HTTPS.')
     parser.add_argument('-d', '--delete', action='store_true', default=False,
-                        help='Use this option to delete the page instead of creating it.')  # TODO will it be overwritten then or just deleted?
+                        help='Use this option to delete the page instead of creating/updating it. The markdown file is then used only to find out the name of the page to be deleted.')  # TODO will it be overwritten then or just deleted?
     args = parser.parse_args()
 
     if not os.path.exists(args.markdownFile):

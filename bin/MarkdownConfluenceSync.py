@@ -4,30 +4,12 @@ Created on Jan 31, 2017
 @author: tobias-vogel-seerene
 '''
 
-import collections
-import json
-import mimetypes
 import os.path
 import sys
-from urllib.parse import urljoin, urlparse
 
+from ConfluenceAdapter import ConfluenceAdapter
 from MarkdownHtmlConverter import MarkdownHtmlConverter
-
-import requests
-
-
-TOC_PARAMS = {
-    'printable': 'true',
-    'style': 'disc',
-    'maxLevel': '5',
-    'minLevel': '1',
-    'class': 'rm-contents',
-    'exclude': '',
-    'type': 'list',
-    'outline': 'false',
-    'include': '',
-}
-pageInfo = collections.namedtuple('PageInfo', ['id', 'version', 'link'])
+#from PageInfo import PageInfo
 
 
 class MarkdownConfluenceSync(object):
@@ -41,17 +23,12 @@ class MarkdownConfluenceSync(object):
         self.sourceFolder = os.path.dirname(
             os.path.abspath(self.args.markdownFile))
 
-        self.setUpUrls()
-
-    def setUpUrls(self):
-        schema = 'http' if self.args.nossl else 'https'
-
-        self.baseUrl = '{}://{}.atlassian.net/'.format(
-            schema,
-            self.args.orgname
+        self.confluenceAdapter = ConfluenceAdapter(
+            args.nossl,
+            args.organisation,
+            args.username,
+            args.password
         )
-        # a URL that is used to setup authentication headers
-        self.authUrl = self.baseUrl + '/wiki'
 
     def run(self):
         self.markdownHtmlConverter = MarkdownHtmlConverter(
@@ -65,260 +42,53 @@ class MarkdownConfluenceSync(object):
         # Add a TOC
         # TODO: perhaps this should be done only if it is requested by the
         # corresponding parameter?
-        self.addContents()
+        self.markdownHtmlConverter.addContents()
 
-        self.init_session()
-
-        page = self.getPage()
+        targetPageInfo = self.confluenceAdapter.getPageInfo(self.title)
 
         if self.args.delete:
-            if page:
-                self.deletePage(page)
-            # TODO: print an error message (will count as exit code 1)
-            sys.exit(1)
+            self.confluenceAdapter.deletePage(targetPageInfo)
+            return
 
+        self.ancestors = self.getAncestorsSnippet()
+
+        self.confluenceAdapter.uploadPage(
+            targetPageInfo,
+            self.markdownHtmlConverter.soup.contents
+        )
+
+    def getAncestorsSnippet(self):
         if self.args.ancestor:
-            parentPage = self.getPage(self.args.ancestor)
-            if parentPage:
-                self.ancestors = [{'type': 'page', 'id': parentPage.id}]
+            parentPageInfo = self.confluenceAdapter.getParentPageInfo(
+                self.args.ancestorTitle)
+            if parentPageInfo:
+                return [
+                    {'type': 'page', 'id': parentPageInfo.id}
+                ]
             else:
                 print(
                     '* Error: Parent page does not exist: {}'.format(self.args.ancestor))
-                # TODO: print an error message (will count as exit code 1)
+                # TODO: print an error message (will count as exit code 1) or
+                # better throw exception
                 sys.exit(1)
         else:
-            self.ancestors = []
-
-        if page:
-            self.updatePage(page)
-        else:
-            self.createPage()
-
-    def init_session(self):
-        self.session = requests.Session()
-        self.session.auth = (self.args.username, self.args.password)
-        # do a request to the auth URL to set up authentication headers (This
-        # step might not be required in all setups but it does not hurt,
-        # either.)
-        self.session.get(self.authUrl)
+            return []
 
     def printWelcomeMessage(self):
-        print('''
-------------------------
+        print('''------------------------
 Markdown Confluence Sync
 ------------------------
 
 Markdown file: "{}"
-Space Key:     "{}"
+Space key:     "{}"
 Title:         "{}"
-'''.format(self.args.markdownFile,
-           self.args.spacekey,  # TODO: print something if no spacekey is provided (username or so will then be the spacekey)
-           self.title
+Parent title:  "{}"
+'''.format(os.path.abspath(self.args.markdownFile),
+           # TODO: print something if no spacekey is provided (username or so
+           # will then be the spacekey)
+           self.args.spacekey or '(nothing provided, will use ??? instead)',
+           self.title,
+           # TODO: what will be used?
+           self.args.ancestor or '(nothing provided, will use ??? instead)'
            )
         )
-
-    # Add contents page
-    def addContents(self):
-        if self.args.contents:
-            toc = self.soup.new_tag(
-                'ac:structured-macro', **{'ac:name': 'toc'})
-
-            for key, val in TOC_PARAMS.iteritems():
-                param = self.soup.new_tag('ac:parameter', **{'ac:name': key})
-                param.string = val
-                toc.append(param)
-
-            self.soup.body.insert(0, toc)
-
-    # Retrieve page details by title
-    def getPage(self):
-        print('* Checking if page exists...')
-        print(" - Retrieving page information: '{}'".format(self.title))
-        url = urljoin(self.baseUrl, '/wiki/rest/api/content')
-
-        self.session.get(url, params={
-            'title': self.title,
-            'spaceKey': self.args.spacekey,
-            'expand': 'version,ancestors',
-        })
-
-        r = self.session.get(url, params={
-            'title': self.title,
-            'spaceKey': self.args.spacekey,
-            'expand': 'version,ancestors',
-        })
-
-        # Check for errors
-        if r.status_code == 404:
-            print('* Error: Page not found. Check the following are correct:')
-            print(" - Space Key : '{}'".format(self.args.spacekey))
-            print(" - Organisation Name: '{}'".format(self.args.orgname))
-            sys.exit(1)
-
-        data = r.json()
-
-        if len(data['results']) >= 1:
-            pageId = data['results'][0]['id']
-            versionNum = data['results'][0]['version']['number']
-            rel_path = os.path.join(
-                '/wiki', data['results'][0]['_links']['webui'].lstrip('/'))
-            link = urljoin(self.baseUrl, rel_path)
-
-            return pageInfo(pageId, versionNum, link)
-
-    # Create a new page
-    def createPage(self):
-        print('* Creating page...')
-
-        url = urljoin(self.baseUrl, '/wiki/rest/api/content/')
-
-        newPage = {'type': 'page',
-                   'title': self.title,
-                   'space': {'key': self.args.spacekey},
-                   'body': {
-                       'storage': {
-                           'value': self.soup.prettify(),
-                           'representation': 'storage',
-                       },
-                   },
-                   'ancestors': self.ancestors,
-                   }
-
-        r = self.session.post(
-            url, data=json.dumps(newPage),
-            headers={'Content-Type': 'application/json'},
-        )
-        r.raise_for_status()
-
-        if r.status_code == 200:
-            data = r.json()
-            spaceName = data['space']['name']
-            rel_path = os.path.join('/wiki', data['_links']['webui'])
-            page = pageInfo(
-                data['id'],
-                data['version']['number'],
-                urljoin(self.baseUrl, rel_path),
-            )
-
-            print(
-                '* Page created in {} with ID: {}.'.format(spaceName, page.id))
-            print(" - URL: '{}'".format(page.link))
-
-            imgCheck = self.soup.find_all('img')
-            if imgCheck or self.args.attachments:
-                print('* Attachments found, update procedure called.')
-                self.updatePage(page)
-        else:
-            print('* Could not create page.')
-            sys.exit(1)
-
-    # Update a page
-    def updatePage(self, page):
-        print('* Updating page...')
-
-        # Add images and attachments
-        self.addImages(page)
-        # self.addAttachments(page)
-
-        url = urljoin(
-            self.baseUrl, '/wiki/rest/api/content/{}'.format(page.id))
-
-        payload = {
-            "type": "page",
-            "title": self.title,
-            "body": {
-                    "storage": {
-                        "value": self.soup.prettify(),
-                        "representation": "storage",
-                    },
-            },
-            "version": {
-                "number": page.version + 1
-            },
-            "ancestors": self.ancestors,
-        }
-
-        r = self.session.put(
-            url,
-            data=json.dumps(payload),
-            headers={'Content-Type': 'application/json'},
-        )
-        r.raise_for_status()
-
-        if r.status_code == 200:
-            data = r.json()
-            rel_path = os.path.join(
-                '/wiki', data['_links']['webui'].lstrip('/'))
-            link = urljoin(self.baseUrl, rel_path)
-
-            print(" - Success: '{}'".format(link))
-        else:
-            print(" - Page could not be updated.")
-
-    # Delete a page
-    def deletePage(self, page):
-        print('* Deleting page...')
-        url = urljoin(
-            self.baseUrl, '/wiki/rest/api/content/{}'.format(page.id))
-
-        r = self.session.delete(
-            url, headers={'Content-Type': 'application/json'})
-        r.raise_for_status()
-
-        if r.status_code == 204:
-            print(' - Page {} deleted successfully.'.format(page.id))
-        else:
-            print(' - Page {} could not be deleted.'.format(page.id))
-
-    # Scan for images and upload as attachments if found
-    def addImages(self, page):
-        for img in self.soup.find_all('img'):
-            img['src'] = self.uploadAttachment(page, img['src'], img['alt'])
-
-    # Add attachments for an array of files
-    def addAttachments(self, page):
-        for path in self.args.attachments:
-            self.uploadAttachment(page, path, '')
-
-    def getAttachment(self, page, filename):
-        url = urljoin(
-            self.baseUrl,
-            '/wiki/rest/api/content/{}/child/attachment'.format(page.id))
-
-        r = self.session.get(url, params={
-            'filename': filename,
-        })
-        r.raise_for_status()
-
-        data = r.json()
-        if data['results']:
-            return '/wiki/rest/api/content/{}/child/attachment/{}/data'.format(
-                page.id, data['results'][0]['id'])
-
-        return '/wiki/rest/api/content/{}/child/attachment/'.format(page.id)
-
-    # Upload an attachment
-    def uploadAttachment(self, page, rel_path, comment):
-        if urlparse(rel_path).scheme:
-            return rel_path
-        basename = os.path.basename(rel_path)
-        print(' - Uploading attachment {}...'.format(basename))
-
-        attachment = self.getAttachment(page, basename)
-        url = urljoin(self.baseUrl, attachment)
-
-        full_path = os.path.join(self.sourceFolder, rel_path)
-        contentType = mimetypes.guess_type(full_path)[0]
-        payload = {
-            'comment': comment,
-            'file': (basename, open(full_path, 'rb'), contentType, {'Expires': '0'})
-        }
-
-        r = self.session.post(
-            url,
-            files=payload,
-            headers={'X-Atlassian-Token': 'no-check'},
-        )
-        r.raise_for_status()
-
-        return '/wiki/download/attachments/{}/{}'.format(page.id, basename)

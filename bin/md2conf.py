@@ -53,4 +53,7 @@ if __name__ == "__main__":
         print()
         sys.exit(parser.format_help())
 
-    MarkdownConfluenceSync(args).run()
+    try:
+        MarkdownConfluenceSync(args).run()
+    except Exception as e:
+        print(e)

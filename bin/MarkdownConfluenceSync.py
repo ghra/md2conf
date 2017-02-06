@@ -9,7 +9,6 @@ import sys
 
 from ConfluenceAdapter import ConfluenceAdapter
 from MarkdownHtmlConverter import MarkdownHtmlConverter
-#from PageInfo import PageInfo
 
 
 class MarkdownConfluenceSync(object):
@@ -25,9 +24,10 @@ class MarkdownConfluenceSync(object):
 
         self.confluenceAdapter = ConfluenceAdapter(
             args.nossl,
-            args.organisation,
+            args.orgname,
             args.username,
-            args.password
+            args.password,
+            args.spacekey,
         )
 
     def run(self):
@@ -42,7 +42,8 @@ class MarkdownConfluenceSync(object):
         # Add a TOC
         # TODO: perhaps this should be done only if it is requested by the
         # corresponding parameter?
-        self.markdownHtmlConverter.addContents()
+        if self.args.contents:
+            self.markdownHtmlConverter.addContents()
 
         targetPageInfo = self.confluenceAdapter.getPageInfo(self.title)
 
@@ -50,7 +51,7 @@ class MarkdownConfluenceSync(object):
             self.confluenceAdapter.deletePage(targetPageInfo)
             return
 
-        self.ancestors = self.getAncestorsSnippet()
+        self.ancestorSnippet = self.getAncestorsSnippet()
 
         self.confluenceAdapter.uploadPage(
             targetPageInfo,
@@ -59,8 +60,8 @@ class MarkdownConfluenceSync(object):
 
     def getAncestorsSnippet(self):
         if self.args.ancestor:
-            parentPageInfo = self.confluenceAdapter.getParentPageInfo(
-                self.args.ancestorTitle)
+            parentPageInfo = self.confluenceAdapter.getPageInfo(
+                self.args.ancestor)
             if parentPageInfo:
                 return [
                     {'type': 'page', 'id': parentPageInfo.id}
@@ -86,7 +87,9 @@ Parent title:  "{}"
 '''.format(os.path.abspath(self.args.markdownFile),
            # TODO: print something if no spacekey is provided (username or so
            # will then be the spacekey)
-           self.args.spacekey or '(nothing provided, will use ??? instead)',
+           # TODO: the username is an email address which does not work as
+           # private space, i think. better double-check this
+           self.args.spacekey or '(nothing provided, will use ~username instead)',
            self.title,
            # TODO: what will be used?
            self.args.ancestor or '(nothing provided, will use ??? instead)'

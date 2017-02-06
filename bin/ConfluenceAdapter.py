@@ -19,69 +19,110 @@ class ConfluenceAdapter(object):
     classdocs
     '''
 
-    def __init__(self, nossl, organisation, username, password):
+    def __init__(self, nossl, organisation, username, password, spacekey):
         self.organisation = organisation
-        self.username = username
-        self.password = password
+        self.spacekey = spacekey or username
         self.setUpUrls(nossl)
+        self.auth = (username, password)
         self.init_session()
 
     def setUpUrls(self, nossl):
         schema = 'http' if nossl else 'https'
 
-        baseUrl = '{}://{}.atlassian.net/'.format(
+        self.baseUrl = '{}://{}.atlassian.net/'.format(
             schema,
             self.organisation
         )
-        # a URL that is used to setup authentication headers
-        self.authUrl = urljoin(baseUrl, '/wiki')
-
         # the URL that HTTP requests are issued against
-        self.apiEndpointUrl = urljoin(baseUrl, '/wiki/rest/api/content')
+        self.apiEndpointUrl = urljoin(self.baseUrl, '/wiki/rest/api/content')
+
+        # a URL that is used to setup authentication headers
+        self.authUrl = urljoin(self.baseUrl, 'wiki')
 
     def init_session(self):
-        self.session = requests.Session()
-        self.session.auth = (self.username, self.password)
         # do a request to the auth URL to set up authentication headers (This
         # step might not be required in all setups but it does not hurt,
         # either.)
-        self.session.get(self.authUrl)
+
+        self.session = requests.Session()
+        self.session.auth = self.auth
+        response = self.session.get(self.authUrl)
+        if response.status_code != 200:
+            errorMessage = 'Authentification against Confluence failed returning the status code {}. '.format(
+                response.status_code)
+            errorMessage += {
+                401: 'The credentials are unknown to the organisation "{}".'.format(self.organisation),
+                502: 'The organisation name "{}" is unknown to Atlassian.'.format(self.organisation),
+            }.get(response.status_code, 'An unknown error occurred.')
+            raise Exception(errorMessage)
+
+# test request
+#        preparedRequest = requests.Request('GET',
+#                                           self.apiEndpointUrl,
+#                                           params={
+#                                               'spaceKey': self.orgname,
+#                                               'expand': 'version,ancestors',
+#                                               'title': "Migration Overview",
+#                                           }).prepare()
+#        print(preparedRequest.url)
+#        response = self.doRequest(preparedRequest)
+
+    def doRequest(self, request):
+        request.auth = self.auth
+
+        response = {
+            'GET': self.session.get(request.url),
+            'POST': self.session.post(request.url)
+        }.get(request.method)
+
+        # for debugging
+        # print(response.status_code)
+        # print(response.content)
+        return response
 
     # Retrieve page details by title
     def getPageInfo(self, title):
-        print('* Checking if page exists...')
-        print(" - Retrieving page information: '{}'".format(title))
-        url = urljoin(self.baseUrl, '/wiki/rest/api/content')
-
-        self.session.get(url, params={
-            'title': self.title,
-            'spaceKey': self.args.spacekey,
+        preparedRequest = requests.Request('GET', self.apiEndpointUrl, params={
+            'spaceKey': self.spacekey,
             'expand': 'version,ancestors',
-        })
+            'title': title,
+        }).prepare()
 
-        r = self.session.get(url, params={
-            'title': self.title,
-            'spaceKey': self.args.spacekey,
-            'expand': 'version,ancestors',
-        })
+        print('Checking, whether page "{}" exists ({})… '.format(
+            title,
+            preparedRequest.url),
+            end="",
+            flush=True)
+
+        response = self.doRequest(preparedRequest)
 
         # Check for errors
-        if r.status_code == 404:
-            print('* Error: Page not found. Check the following are correct:')
-            print(" - Space Key : '{}'".format(self.args.spacekey))
-            print(" - Organisation Name: '{}'".format(self.args.orgname))
-            sys.exit(1)
+        if response.status_code != 200:
+            print('Failed')
+            if response.status_code == 404:
+                print(
+                    'Error: Page not found. Check the following are correct:')
+                print('Space key : "{}"'.format(self.spacekey))
+                print('Organisation name: "{}"'.format(self.organisation))
+                # sys.exit(1)
+            # TODO: format and handle exception properly
+            raise Exception('error')
 
-        data = r.json()
+        print('OK')
+        data = response.json()
 
-        if len(data['results']) >= 1:
+        if len(data['results']) == 0:
+            return
+        elif len(data['results']) == 1:
             pageId = data['results'][0]['id']
             versionNum = data['results'][0]['version']['number']
             rel_path = os.path.join(
                 '/wiki', data['results'][0]['_links']['webui'].lstrip('/'))
             link = urljoin(self.baseUrl, rel_path)
-
             return PageInfo(pageId, versionNum, link)
+        else:
+            raise Exception(
+                'The page titled "{}" exists multiple times and therefore is ambiguous. Try renaming the file to create or choose another ancestor.'.format(title))
 
     # Delete a page
     def deletePage(self, pageInfo):
@@ -102,9 +143,6 @@ class ConfluenceAdapter(object):
             print(' - Page {} deleted successfully.'.format(pageInfo.id))
         else:
             print(' - Page {} could not be deleted.'.format(pageInfo.id))
-
-    def getParentPageInfo(self, parentPageTitle):
-        return self.getPageInfo(parentPageTitle)
 
     def uploadPage(self, pageInfo, html):
         if pageInfo:

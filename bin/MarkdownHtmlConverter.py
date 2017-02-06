@@ -40,13 +40,13 @@ class MarkdownHtmlConverter(object):
 
         # Add contents page
     def addContents(self):
-        if self.args.contents:
-            toc = self.soup.new_tag(
-                'ac:structured-macro', **{'ac:name': 'toc'})
 
-            for key, val in TOC_PARAMS.iteritems():
-                param = self.soup.new_tag('ac:parameter', **{'ac:name': key})
-                param.string = val
-                toc.append(param)
+        toc = self.soup.new_tag(
+            'ac:structured-macro', **{'ac:name': 'toc'})
 
-            self.soup.body.insert(0, toc)
+        for key, val in TOC_PARAMS.iteritems():
+            param = self.soup.new_tag('ac:parameter', **{'ac:name': key})
+            param.string = val
+            toc.append(param)
+
+        self.soup.body.insert(0, toc)

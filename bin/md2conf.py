@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+
 """
 Create or update Confluence pages from markdown
 """

@@ -34,7 +34,7 @@ class ConfluenceAdapter(object):
             self.organisation
         )
         # the URL that HTTP requests are issued against
-        self.apiEndpointUrl = urljoin(self.baseUrl, '/wiki/rest/api/content')
+        self.apiEndpointUrl = urljoin(self.baseUrl, '/wiki/rest/api/content/')
 
         # a URL that is used to setup authentication headers
         self.authUrl = urljoin(self.baseUrl, 'wiki')
@@ -67,13 +67,14 @@ class ConfluenceAdapter(object):
 #        print(preparedRequest.url)
 #        response = self.doRequest(preparedRequest)
 
-    def doRequest(self, request):
-        request.auth = self.auth
+    def doRequest(self, preparedRequest):
+        preparedRequest.auth = self.auth
 
         response = {
-            'GET': self.session.get(request.url),
-            'POST': self.session.post(request.url)
-        }.get(request.method)
+            'GET': self.session.get(preparedRequest.url),
+            'POST': self.session.post(preparedRequest.url),
+            'DELETE': self.session.delete(preparedRequest.url),
+        }.get(preparedRequest.method)
 
         # for debugging
         # print(response.status_code)
@@ -81,14 +82,15 @@ class ConfluenceAdapter(object):
         return response
 
     # Retrieve page details by title
-    def getPageInfo(self, title):
+    def getPageInfo(self, title, relationship='target'):
         preparedRequest = requests.Request('GET', self.apiEndpointUrl, params={
             'spaceKey': self.spacekey,
             'expand': 'version,ancestors',
             'title': title,
         }).prepare()
 
-        print('Checking, whether page "{}" exists ({})… '.format(
+        print('Checking, whether {} page "{}" exists ({})… '.format(
+            relationship,
             title,
             preparedRequest.url),
             end="",
@@ -125,57 +127,91 @@ class ConfluenceAdapter(object):
                 'The page titled "{}" exists multiple times and therefore is ambiguous. Try renaming the file to create or choose another ancestor.'.format(title))
 
     # Delete a page
-    def deletePage(self, pageInfo):
+    def deletePage(self, pageInfo, title):
         # TODO: test this
         if not pageInfo:
-            # TODO: handle this properly
-            sys.exit('No pageInfo provided. Error! Abort!')
+            raise Exception(
+                'The page "{}" was not found and therefore cannot be deleted. There is nothing to do. Aborting.'.format(title))
 
-        print('* Deleting page...')
-        url = urljoin(
-            self.baseUrl, '/wiki/rest/api/content/{}'.format(pageInfo.id))
+        print('Deleting page "{}" ({})… '.format(
+            title,
+            pageInfo.link
+        ),
+            end="",
+            flush=True)
+        url = urljoin(self.apiEndpointUrl, pageInfo.id)
 
-        r = self.session.delete(
-            url, headers={'Content-Type': 'application/json'})
+        preparedRequest = requests.Request('DELETE', url).prepare()
+
+        response = self.doRequest(preparedRequest)
+
+        # r = self.session.delete(
+        #    url, headers={'Content-Type': 'application/json'})
+        # r.raise_for_status()
+
+        if response.status_code == 204:
+            print('OK')
+        else:
+            print(
+                'Failed with status code {}. Aborting.'.format(response.status_code))
+
+    def deletePageOldStyle(self, pageInfo):
+        print('\nDeleting page...')
+        url = '%s%s' % (self.apiEndpointUrl, pageInfo.id)
+
+        s = requests.Session()
+        s.auth = self.auth
+        s.headers.update({'Content-Type': 'application/json'})
+
+        s.delete(url)
+        r = s.delete(url)
         r.raise_for_status()
 
         if r.status_code == 204:
-            print(' - Page {} deleted successfully.'.format(pageInfo.id))
-        else:
-            print(' - Page {} could not be deleted.'.format(pageInfo.id))
+            print('Page %s deleted successfully.' % pageInfo.id)
 
-    def uploadPage(self, pageInfo, html):
+    def uploadPage(self, pageInfo, title, html, ancestorSnippet):
         if pageInfo:
-            self.updatePage(pageInfo)
+            # self.updatePage(pageInfo)
+            pass
         else:
-            self.createPage()
+            # TODO: do not use old style, but new style
+            self.createPageOldStyle(title, html, ancestorSnippet)
+            #self.createPage(title, html, ancestorSnippet)
 
     # Create a new page
-    def createPage(self):
-        print('* Creating page...')
-
-        url = urljoin(self.baseUrl, '/wiki/rest/api/content/')
+    def createPage(self, title, html, ancestorSnippet):
+        # TODO: how can this happen to not be printed?
+        url = "(((((((((((noch nciht bekannt))))))))))))))"
+        print('Creating the page "{}" ({})… '.format(
+            title,
+            url),
+            end="",
+            flush=True)
 
         newPage = {'type': 'page',
-                   'title': self.title,
-                   'space': {'key': self.args.spacekey},
+                   'title': title,
+                   'space': {'key': self.spacekey},
                    'body': {
                        'storage': {
-                           'value': self.soup.prettify(),
+                           'value': html.prettify(),
                            'representation': 'storage',
                        },
                    },
-                   'ancestors': self.ancestors,
+                   'ancestors': ancestorSnippet,
                    }
 
-        r = self.session.post(
-            url, data=json.dumps(newPage),
-            headers={'Content-Type': 'application/json'},
-        )
-        r.raise_for_status()
+        preparedRequest = requests.Request(
+            'POST',
+            self.apiEndpointUrl,
+            data=json.dumps(newPage),
+        ).prepare()
 
-        if r.status_code == 200:
-            data = r.json()
+        response = self.doRequest(preparedRequest)
+        response.raise_for_status()
+
+        if response.status_code == 200:
+            data = response.json()
             spaceName = data['space']['name']
             rel_path = os.path.join('/wiki', data['_links']['webui'])
             page = PageInfo(
@@ -195,6 +231,61 @@ class ConfluenceAdapter(object):
         else:
             print('* Could not create page.')
             sys.exit(1)
+
+    # Create a new page
+    def createPageOldStyle(self, title, html, ancestorSnippet):
+        url = self.apiEndpointUrl
+        postSession = requests.Session()
+        postSession.auth = self.auth
+        postSession.headers.update({'Content-Type': 'application/json'})
+
+        # again, do this authentification request
+        postSession.get(self.authUrl)
+
+        print('Creating the page "{}"… '.format(
+            title,
+            url),
+            end="",
+            flush=True)
+        newPage = {'type': 'page',
+                   'title': title,
+                   'space': {'key': self.spacekey},
+                   'body': {
+                       'storage': {
+                           'value': html.prettify(),
+                           'representation': 'storage'
+                       }
+                   },
+                   'ancestors': ancestorSnippet
+                   }
+
+        #s.post(url, data=json.dumps(newPage))
+        response = postSession.post(url, data=json.dumps(newPage))
+        response.raise_for_status()
+
+        if response.status_code == 200:
+            print('OK')
+            data = response.json()
+            #spaceName = data[u'space'][u'name']
+            #pageId = data[u'id']
+            #version = data[u'version'][u'number']
+
+            humanReadableUrl = urljoin(self.baseUrl, data[u'_links'][u'webui'])
+            idUrl = urljoin(self.apiEndpointUrl, data[u'id'])
+
+            print("ignoring images or attachments for now")
+#            imgCheck = re.search('<img(.*?)\/>', body)
+#            if imgCheck or attachments:
+#                print '\tAttachments found, update procedure called.'
+#                updatePage(pageId, title, body, version, ancestors, attachments)
+#            else:
+#                if goToPage:
+#                    webbrowser.open(link)
+            print('The created page "{}" is located at "{}" (or {}).'.format(
+                title, humanReadableUrl, idUrl))
+        else:
+            raise(Exception(
+                'Uploading the page "{}" failed with error code {}.'.format(title, response.status_code)))
 
     # Update a page
     def updatePage(self, page):

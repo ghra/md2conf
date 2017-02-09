@@ -48,20 +48,23 @@ class MarkdownConfluenceSync(object):
         targetPageInfo = self.confluenceAdapter.getPageInfo(self.title)
 
         if self.args.delete:
-            self.confluenceAdapter.deletePage(targetPageInfo)
+            self.confluenceAdapter.deletePage(targetPageInfo, self.title)
+            # self.confluenceAdapter.deletePageOldStyle(targetPageInfo)
             return
 
         self.ancestorSnippet = self.getAncestorsSnippet()
 
         self.confluenceAdapter.uploadPage(
             targetPageInfo,
-            self.markdownHtmlConverter.soup.contents
+            self.title,
+            self.markdownHtmlConverter.soup,
+            self.ancestorSnippet,
         )
 
     def getAncestorsSnippet(self):
         if self.args.ancestor:
             parentPageInfo = self.confluenceAdapter.getPageInfo(
-                self.args.ancestor)
+                self.args.ancestor, 'parent')
             if parentPageInfo:
                 return [
                     {'type': 'page', 'id': parentPageInfo.id}

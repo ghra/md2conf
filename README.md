@@ -81,6 +81,7 @@ Standard markdown syntax for images and code blocks will be automatically conver
 ### Additional usage information
 
 * The title of the page is determined by the contents of the first <h1> element.
+* The username may be the email address or the actual username in confluence. You can find it out by mentioning yourself. (Should be double-checked)
 
 ### Information, Note and Warning Macros
 

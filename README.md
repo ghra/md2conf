@@ -81,7 +81,8 @@ Standard markdown syntax for images and code blocks will be automatically conver
 ### Additional usage information
 
 * The title of the page is determined by the contents of the first <h1> element.
-* The username may be the email address or the actual username in confluence. You can find it out by mentioning yourself. (Should be double-checked)
+* The username should be the actual username in confluence. The email address seems to work at a first glance, but behaves strange. Some requests have to be issued twice (GET, POST), other requests (DELETE) do not work at all.
+ * Find out the username by mentioning the user (using the `@` in Confluence or JIRA) or open the “People” page in Confluence. There you will be able to see the usernames when you hover over or click on a username.
 
 ### Information, Note and Warning Macros
 

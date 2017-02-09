@@ -40,8 +40,7 @@ class MarkdownConfluenceSync(object):
         self.printWelcomeMessage()
 
         # Add a TOC
-        # TODO: perhaps this should be done only if it is requested by the
-        # corresponding parameter?
+        # FIXME: this currently does not work and produces garbage in the HTML
         if self.args.contents:
             self.markdownHtmlConverter.addContents()
 
@@ -49,7 +48,6 @@ class MarkdownConfluenceSync(object):
 
         if self.args.delete:
             self.confluenceAdapter.deletePage(targetPageInfo, self.title)
-            # self.confluenceAdapter.deletePageOldStyle(targetPageInfo)
             return
 
         self.ancestorSnippet = self.getAncestorsSnippet()

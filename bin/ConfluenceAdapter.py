@@ -1,7 +1,7 @@
 '''
 Created on Feb 2, 2017
 
-@author: tobais-vogel-seerene
+@author: tobias-vogel-seerene
 '''
 
 import json
@@ -15,9 +15,6 @@ import requests
 
 
 class ConfluenceAdapter(object):
-    '''
-    classdocs
-    '''
 
     def __init__(self, nossl, organisation, username, password, spacekey):
         self.organisation = organisation
@@ -37,7 +34,8 @@ class ConfluenceAdapter(object):
         self.apiEndpointUrl = urljoin(self.baseUrl, '/wiki/rest/api/content/')
 
         # a URL that is used to setup authentication headers
-        self.authUrl = urljoin(self.baseUrl, 'wiki')
+        # NB: It is necessary to not sufficient to
+        self.authUrl = urljoin(self.baseUrl, 'wiki/rest/api/content/?limit=0')
 
     def init_session(self):
         # do a request to the auth URL to set up authentication headers (This
@@ -55,17 +53,9 @@ class ConfluenceAdapter(object):
                 502: 'The organisation name "{}" is unknown to Atlassian.'.format(self.organisation),
             }.get(response.status_code, 'An unknown error occurred.')
             raise Exception(errorMessage)
-
-# test request
-#        preparedRequest = requests.Request('GET',
-#                                           self.apiEndpointUrl,
-#                                           params={
-#                                               'spaceKey': self.orgname,
-#                                               'expand': 'version,ancestors',
-#                                               'title': "Migration Overview",
-#                                           }).prepare()
-#        print(preparedRequest.url)
-#        response = self.doRequest(preparedRequest)
+        elif len(response.content) == 0:
+            raise Exception(
+                'The response had a status code 200, but was empty. Did you specify an email address as username?')
 
     def doRequest(self, preparedRequest):
         preparedRequest.auth = self.auth
@@ -77,8 +67,8 @@ class ConfluenceAdapter(object):
         }.get(preparedRequest.method)
 
         # for debugging
-        # print(response.status_code)
-        # print(response.content)
+        #print('Response code: {}'.format(response.status_code))
+        #print('Response content: {}'.format(response.content))
         return response
 
     # Retrieve page details by title
@@ -108,7 +98,8 @@ class ConfluenceAdapter(object):
                 print('Organisation name: "{}"'.format(self.organisation))
                 # sys.exit(1)
             # TODO: format and handle exception properly
-            raise Exception('error')
+            raise Exception(
+                'Error during request (404): {}'.format(response.json()))
 
         print('OK')
         data = response.json()
@@ -124,7 +115,7 @@ class ConfluenceAdapter(object):
             return PageInfo(pageId, versionNum, link)
         else:
             raise Exception(
-                'The page titled "{}" exists multiple times and therefore is ambiguous. Try renaming the file to create or choose another ancestor.'.format(title))
+                'The page titled "{}" exists multiple times and therefore is ambiguous. Try renaming the page to create or choose another ancestor.'.format(title))
 
     # Delete a page
     def deletePage(self, pageInfo, title):
@@ -145,30 +136,26 @@ class ConfluenceAdapter(object):
 
         response = self.doRequest(preparedRequest)
 
-        # r = self.session.delete(
-        #    url, headers={'Content-Type': 'application/json'})
-        # r.raise_for_status()
-
         if response.status_code == 204:
             print('OK')
         else:
             print(
                 'Failed with status code {}. Aborting.'.format(response.status_code))
 
-    def deletePageOldStyle(self, pageInfo):
-        print('\nDeleting page...')
-        url = '%s%s' % (self.apiEndpointUrl, pageInfo.id)
+    # def deletePageOldStyle(self, pageInfo):
+    #    print('\nDeleting page...')
+    #    url = '%s%s' % (self.apiEndpointUrl, pageInfo.id)
 
-        s = requests.Session()
-        s.auth = self.auth
-        s.headers.update({'Content-Type': 'application/json'})
+    #    s = requests.Session()
+    #    s.auth = self.auth
+    #    s.headers.update({'Content-Type': 'application/json'})
 
-        s.delete(url)
-        r = s.delete(url)
-        r.raise_for_status()
+    #    s.delete(url)
+    #    r = s.delete(url)
+    #    r.raise_for_status()
 
-        if r.status_code == 204:
-            print('Page %s deleted successfully.' % pageInfo.id)
+    #    if r.status_code == 204:
+    #        print('Page %s deleted successfully.' % pageInfo.id)
 
     def uploadPage(self, pageInfo, title, html, ancestorSnippet):
         if pageInfo:
@@ -270,7 +257,10 @@ class ConfluenceAdapter(object):
             #pageId = data[u'id']
             #version = data[u'version'][u'number']
 
-            humanReadableUrl = urljoin(self.baseUrl, data[u'_links'][u'webui'])
+            # TODO: this string concatenation should not be necessary and in
+            # the __init__ there should be instructions and examples
+            humanReadableUrl = urljoin(
+                self.baseUrl + '/wiki', data[u'_links'][u'webui'])
             idUrl = urljoin(self.apiEndpointUrl, data[u'id'])
 
             print("ignoring images or attachments for now")

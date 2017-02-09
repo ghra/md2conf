@@ -44,9 +44,9 @@ class MarkdownHtmlConverter(object):
         toc = self.soup.new_tag(
             'ac:structured-macro', **{'ac:name': 'toc'})
 
-        for key, val in TOC_PARAMS.iteritems():
+        for key, val in TOC_PARAMS.items():
             param = self.soup.new_tag('ac:parameter', **{'ac:name': key})
             param.string = val
             toc.append(param)
 
-        self.soup.body.insert(0, toc)
+        self.soup.insert(0, toc)

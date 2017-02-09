@@ -21,7 +21,7 @@ if __name__ == "__main__":
     parser.add_argument('spacekey', nargs='?', default='',
                         help="Confluence Space key for the page. If omitted, will use user space.")
     parser.add_argument('-u', '--username', default=getenv('CONFLUENCE_USERNAME',
-                                                           None), help='Confluence username if $CONFLUENCE_USERNAME not set.')
+                                                           None), help='Confluence username if $CONFLUENCE_USERNAME not set. (This should not be an email address.)')
     parser.add_argument('-p', '--password', default=getenv('CONFLUENCE_PASSWORD',
                                                            None), help='Confluence password if $CONFLUENCE_PASSWORD not set.')
     parser.add_argument('-o', '--orgname', default=getenv('CONFLUENCE_ORGNAME', None),
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--attachments', nargs='+',
                         help='Attachment(s) to upload to page. Paths relative to the markdown file.')
     parser.add_argument('-c', '--contents', action='store_true',
-                        default=False, help='Use this option to generate a contents page.')  # TODO what does this mean? and how is it related to the addContents method and TOC in MarkdownConfluenceSync?
+                        default=False, help='Use this option to generate a contents page. (Currently, it does not work and you should not use this parameter.')
     parser.add_argument('-n', '--nossl', action='store_true', default=False,
                         help='Use this option if NOT using SSL. Will use HTTP instead of HTTPS.')
     parser.add_argument('-d', '--delete', action='store_true', default=False,
@@ -53,6 +53,10 @@ if __name__ == "__main__":
         )
         print()
         sys.exit(parser.format_help())
+
+    if ('@' in args.username):
+        print(
+            'Warning: Your username looks like an email address. This tool will most probably not work properly. For further details consult the README.md file.')
 
     try:
         MarkdownConfluenceSync(args).run()

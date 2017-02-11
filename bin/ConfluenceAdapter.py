@@ -7,7 +7,7 @@ Created on Feb 2, 2017
 import json
 import mimetypes
 import os.path
-import sys
+import re
 from urllib.parse import urljoin, urlparse
 
 from PageInfo import PageInfo
@@ -26,16 +26,19 @@ class ConfluenceAdapter(object):
     def setUpUrls(self, nossl):
         schema = 'http' if nossl else 'https'
 
-        self.baseUrl = '{}://{}.atlassian.net/'.format(
+        baseUrl = '{}://{}.atlassian.net/'.format(
             schema,
             self.organisation
         )
         # the URL that HTTP requests are issued against
-        self.apiEndpointUrl = urljoin(self.baseUrl, '/wiki/rest/api/content/')
+        self.apiEndpointUrl = urljoin(baseUrl, '/wiki/rest/api/content/')
 
-        # a URL that is used to setup authentication headers
-        # NB: It is necessary to not sufficient to
-        self.authUrl = urljoin(self.baseUrl, 'wiki/rest/api/content/?limit=0')
+        # a URL that is used to check authentication
+        self.connectionTestUrl = urljoin(
+            self.apiEndpointUrl, '?limit=0')
+
+        # the URL where the human-readable wiki lives
+        self.wikiUrl = urljoin(baseUrl, 'wiki/')
 
     def init_session(self):
         # do a request to the auth URL to set up authentication headers (This
@@ -44,7 +47,7 @@ class ConfluenceAdapter(object):
 
         self.session = requests.Session()
         self.session.auth = self.auth
-        response = self.session.get(self.authUrl)
+        response = self.session.get(self.connectionTestUrl)
         if response.status_code != 200:
             errorMessage = 'Authentification against Confluence failed returning the status code {}. '.format(
                 response.status_code)
@@ -109,9 +112,9 @@ class ConfluenceAdapter(object):
         elif len(data['results']) == 1:
             pageId = data['results'][0]['id']
             versionNum = data['results'][0]['version']['number']
-            rel_path = os.path.join(
-                '/wiki', data['results'][0]['_links']['webui'].lstrip('/'))
-            link = urljoin(self.baseUrl, rel_path)
+            link = urljoin(
+                self.wikiUrl,
+                data['results'][0]['_links']['webui'].lstrip('/'))
             return PageInfo(pageId, versionNum, link)
         else:
             raise Exception(
@@ -142,92 +145,23 @@ class ConfluenceAdapter(object):
             print(
                 'Failed with status code {}. Aborting.'.format(response.status_code))
 
-    # def deletePageOldStyle(self, pageInfo):
-    #    print('\nDeleting page...')
-    #    url = '%s%s' % (self.apiEndpointUrl, pageInfo.id)
-
-    #    s = requests.Session()
-    #    s.auth = self.auth
-    #    s.headers.update({'Content-Type': 'application/json'})
-
-    #    s.delete(url)
-    #    r = s.delete(url)
-    #    r.raise_for_status()
-
-    #    if r.status_code == 204:
-    #        print('Page %s deleted successfully.' % pageInfo.id)
-
     def uploadPage(self, pageInfo, title, html, ancestorSnippet):
         if pageInfo:
+            # FIXME: update a page
+            print('Disabled updating a page.')
             # self.updatePage(pageInfo)
             pass
         else:
-            # TODO: do not use old style, but new style
-            self.createPageOldStyle(title, html, ancestorSnippet)
-            #self.createPage(title, html, ancestorSnippet)
+            self.createPage(title, html, ancestorSnippet)
 
     # Create a new page
     def createPage(self, title, html, ancestorSnippet):
-        # TODO: how can this happen to not be printed?
-        url = "(((((((((((noch nciht bekannt))))))))))))))"
-        print('Creating the page "{}" ({})… '.format(
-            title,
-            url),
-            end="",
-            flush=True)
+        prettyHtml = html.prettify()
 
-        newPage = {'type': 'page',
-                   'title': title,
-                   'space': {'key': self.spacekey},
-                   'body': {
-                       'storage': {
-                           'value': html.prettify(),
-                           'representation': 'storage',
-                       },
-                   },
-                   'ancestors': ancestorSnippet,
-                   }
-
-        preparedRequest = requests.Request(
-            'POST',
-            self.apiEndpointUrl,
-            data=json.dumps(newPage),
-        ).prepare()
-
-        response = self.doRequest(preparedRequest)
-        response.raise_for_status()
-
-        if response.status_code == 200:
-            data = response.json()
-            spaceName = data['space']['name']
-            rel_path = os.path.join('/wiki', data['_links']['webui'])
-            page = PageInfo(
-                data['id'],
-                data['version']['number'],
-                urljoin(self.baseUrl, rel_path),
-            )
-
-            print(
-                '* Page created in {} with ID: {}.'.format(spaceName, page.id))
-            print(" - URL: '{}'".format(page.link))
-
-            imgCheck = self.soup.find_all('img')
-            if imgCheck or self.args.attachments:
-                print('* Attachments found, update procedure called.')
-                self.updatePage(page)
-        else:
-            print('* Could not create page.')
-            sys.exit(1)
-
-    # Create a new page
-    def createPageOldStyle(self, title, html, ancestorSnippet):
         url = self.apiEndpointUrl
         postSession = requests.Session()
         postSession.auth = self.auth
         postSession.headers.update({'Content-Type': 'application/json'})
-
-        # again, do this authentification request
-        postSession.get(self.authUrl)
 
         print('Creating the page "{}"… '.format(
             title,
@@ -239,7 +173,7 @@ class ConfluenceAdapter(object):
                    'space': {'key': self.spacekey},
                    'body': {
                        'storage': {
-                           'value': html.prettify(),
+                           'value': prettyHtml,
                            'representation': 'storage'
                        }
                    },
@@ -253,29 +187,18 @@ class ConfluenceAdapter(object):
         if response.status_code == 200:
             print('OK')
             data = response.json()
-            #spaceName = data[u'space'][u'name']
-            #pageId = data[u'id']
-            #version = data[u'version'][u'number']
-
-            # TODO: this string concatenation should not be necessary and in
-            # the __init__ there should be instructions and examples
             humanReadableUrl = urljoin(
-                self.baseUrl + '/wiki', data[u'_links'][u'webui'])
+                self.wikiUrl,
+                data['_links']['webui'].lstrip('/'))
             idUrl = urljoin(self.apiEndpointUrl, data[u'id'])
-
-            print("ignoring images or attachments for now")
-#            imgCheck = re.search('<img(.*?)\/>', body)
-#            if imgCheck or attachments:
-#                print '\tAttachments found, update procedure called.'
-#                updatePage(pageId, title, body, version, ancestors, attachments)
-#            else:
-#                if goToPage:
-#                    webbrowser.open(link)
             print('The created page "{}" is located at "{}" (or {}).'.format(
                 title, humanReadableUrl, idUrl))
         else:
             raise(Exception(
                 'Uploading the page "{}" failed with error code {}.'.format(title, response.status_code)))
+
+        # deal with images
+        self.addImages(html)
 
     # Update a page
     def updatePage(self, page):
@@ -285,8 +208,7 @@ class ConfluenceAdapter(object):
         self.addImages(page)
         # self.addAttachments(page)
 
-        url = urljoin(
-            self.baseUrl, '/wiki/rest/api/content/{}'.format(page.id))
+        url = urljoin(self.apiEndpointUrl, format(page.id))
 
         payload = {
             "type": "page",
@@ -312,16 +234,37 @@ class ConfluenceAdapter(object):
 
         if r.status_code == 200:
             data = r.json()
-            rel_path = os.path.join(
-                '/wiki', data['_links']['webui'].lstrip('/'))
-            link = urljoin(self.baseUrl, rel_path)
+            link = urljoin(
+                self.wikiUrl,
+                data['_links']['webui'].lstrip('/'))
 
             print(" - Success: '{}'".format(link))
         else:
             print(" - Page could not be updated.")
 
+    def processReferencedImages(self, referencedImages):
+        pass  # ist das hiernach vielleicht verwendbar?
+
     # Scan for images and upload as attachments if found
-    def addImages(self, page):
+    def addImages(self, html):
+        imgs = html.find_all('img')
+        if len(imgs) > 0:
+            print(
+                '{} images were referenced on the created page. They are uploaded, too (if needed).'.format(
+                    len(imgs)))
+            for img in html.find_all('img'):
+                img['src'] = self.uploadAttachment(
+                    page, img['src'], img['alt'])
+
+        referencedImages = re.findall('<img(.*?)\/>', prettyHtml)
+        if len(referencedImages) > 0:  # or attachments:
+            print(
+                '{} images were referenced on the created page. They are uploaded, too (if needed).'.format(
+                    len(referencedImages)))
+            self.processReferencedImages(referencedImages)
+
+        # das ist viel besser als der regex, vielleicht kann man den gleich
+        # loswerden
         for img in self.soup.find_all('img'):
             img['src'] = self.uploadAttachment(page, img['src'], img['alt'])
 
@@ -332,8 +275,8 @@ class ConfluenceAdapter(object):
 
     def getAttachment(self, page, filename):
         url = urljoin(
-            self.baseUrl,
-            '/wiki/rest/api/content/{}/child/attachment'.format(page.id))
+            self.apiEndpointUrl,
+            '{}/child/attachment'.format(page.id))
 
         r = self.session.get(url, params={
             'filename': filename,

@@ -59,6 +59,9 @@ class MarkdownConfluenceSync(object):
             self.ancestorSnippet,
         )
 
+        self.confluenceAdapter.uploadAttachments(
+            self.markdownHtmlConverter.getNormalized2OriginalSrcMapping())
+
     def getAncestorsSnippet(self):
         if self.args.ancestor:
             parentPageInfo = self.confluenceAdapter.getPageInfo(

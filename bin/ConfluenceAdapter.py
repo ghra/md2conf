@@ -198,7 +198,7 @@ class ConfluenceAdapter(object):
                 'Uploading the page "{}" failed with error code {}.'.format(title, response.status_code)))
 
         # deal with images
-        self.addImages(html)
+#        self.addImages(html)
 
     # Update a page
     def updatePage(self, page):
@@ -242,31 +242,33 @@ class ConfluenceAdapter(object):
         else:
             print(" - Page could not be updated.")
 
-    def processReferencedImages(self, referencedImages):
-        pass  # ist das hiernach vielleicht verwendbar?
+ #   def processReferencedImages(self, referencedImages):
+ #       pass  # ist das hiernach vielleicht verwendbar?
 
     # Scan for images and upload as attachments if found
-    def addImages(self, html):
-        imgs = html.find_all('img')
-        if len(imgs) > 0:
-            print(
-                '{} images were referenced on the created page. They are uploaded, too (if needed).'.format(
-                    len(imgs)))
-            for img in html.find_all('img'):
-                img['src'] = self.uploadAttachment(
-                    page, img['src'], img['alt'])
+#    def addImages(self, html):
+#        page = None
+#        prettyHtml = None
+#        imgs = html.find_all('img')
+#        if len(imgs) > 0:
+#            print(
+#                '{} images were referenced on the created page. They are uploaded, too (if needed).'.format(
+#                    len(imgs)))
+#            for img in html.find_all('img'):
+#                img['src'] = self.uploadAttachment(
+#                    page, img['src'], img['alt'])
+#
+#        referencedImages = re.findall('<img(.*?)\/>', prettyHtml)
+#        if len(referencedImages) > 0:  # or attachments:
+#            print(
+#                '{} images were referenced on the created page. They are uploaded, too (if needed).'.format(
+#                    len(referencedImages)))
+#            self.processReferencedImages(referencedImages)
 
-        referencedImages = re.findall('<img(.*?)\/>', prettyHtml)
-        if len(referencedImages) > 0:  # or attachments:
-            print(
-                '{} images were referenced on the created page. They are uploaded, too (if needed).'.format(
-                    len(referencedImages)))
-            self.processReferencedImages(referencedImages)
-
-        # das ist viel besser als der regex, vielleicht kann man den gleich
-        # loswerden
-        for img in self.soup.find_all('img'):
-            img['src'] = self.uploadAttachment(page, img['src'], img['alt'])
+#        # das ist viel besser als der regex, vielleicht kann man den gleich
+#        # loswerden
+#        for img in self.soup.find_all('img'):
+#            img['src'] = self.uploadAttachment(page, img['src'], img['alt'])
 
     # Add attachments for an array of files
     def addAttachments(self, page):
@@ -315,3 +317,16 @@ class ConfluenceAdapter(object):
         r.raise_for_status()
 
         return '/wiki/download/attachments/{}/{}'.format(page.id, basename)
+
+    def uploadAttachments(self, normalized2OriginalPathtMapping):
+        numberOfAttachmentsToUpload = len(normalized2OriginalPathtMapping)
+        if numberOfAttachmentsToUpload == 0:
+            return
+        elif numberOfAttachmentsToUpload == 1:
+            print('An attachment has to be uploaded.')
+        else:
+            print('{} attachments have to be uploaded.'.format(
+                numberOfAttachmentsToUpload))
+
+        for normalizedPath, originalPath in normalized2OriginalPathtMapping.items():
+            print('{} => {}'.format(normalizedPath, originalPath))

@@ -30,18 +30,22 @@ TOC_PARAMS = {
 class MarkdownHtmlConverter(object):
 
     def __init__(self, markdownfilename):
-        html = self.convertMarkdownToHtml(markdownfilename)
+        self.markdownfilename = markdownfilename
+        html = self.convertMarkdownToHtml()
         self.soup = BeautifulSoup(html, "html.parser")
         self.normalized2OriginalSrcMapping = {}
         self.replaceIncludesOfLocalResources()
 
-    def convertMarkdownToHtml(self, markdownfilename):
-        with open(markdownfilename, 'r') as inp:
+    def convertMarkdownToHtml(self):
+        with open(self.markdownfilename, 'r') as inp:
             html = markdown.markdown(inp.read(), extensions=MD_EXTENSIONS)
             return html
 
     def getTitle(self):
-        return self.soup.find('h1').extract().text
+        try:
+            return self.soup.find('h1').extract().text
+        except:
+            return os.path.splitext(os.path.basename(self.markdownfilename))[0]
 
     def cautiouslyAddMapping(self, normalizedPath, originalPath):
         existingOriginalPath = self.normalized2OriginalSrcMapping.get(

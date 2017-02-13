@@ -30,7 +30,7 @@ class ConfluenceAdapter(object):
             self.organisation
         )
         # the URL that HTTP requests are issued against
-        self.apiEndpointUrl = urljoin(baseUrl, '/wiki/rest/api/content/')
+        self.apiEndpointUrl = urljoin(baseUrl, '/wiki/rest/api/content')
 
         # a URL that is used to check authentication
         self.connectionTestUrl = urljoin(
@@ -78,11 +78,11 @@ class ConfluenceAdapter(object):
             'title': title,
         }).prepare()
 
-        print('Checking, whether {} page "{}" exists ({})… '.format(
+        print('Checking, whether {} page "{}" exists (GET {})… '.format(
             relationship,
             title,
             preparedRequest.url),
-            end="",
+            end='',
             flush=True)
 
         response = self.doRequest(preparedRequest)
@@ -99,20 +99,25 @@ class ConfluenceAdapter(object):
                 'Error during request: {}'.format(response.json()))
 
         print('OK')
+
         data = response.json()
 
-        if len(data['results']) == 0:
+        numberOfResults = len(data['results'])
+        if numberOfResults == 0:
+            print('Found no pages with that name.')
             return
-        elif len(data['results']) == 1:
+        elif numberOfResults == 1:
             pageId = data['results'][0]['id']
             versionNum = data['results'][0]['version']['number']
             link = urljoin(
                 self.wikiUrl,
                 data['results'][0]['_links']['webui'].lstrip('/'))
+            print('Found a page with that name located at {}.'.format(link))
             return PageInfo(pageId, versionNum, link)
         else:
+            print('Found {} pages with that name.'.format(numberOfResults))
             raise Exception(
-                'The page titled "{}" exists multiple times and therefore is ambiguous. Try renaming the page to create or choose another ancestor.'.format(title))
+                'The page titled "{}" exists multiple times and therefore is ambiguous. Try renaming the page to create or choose another ancestor or delete it manually.'.format(title))
 
     # Delete a page
     def deletePage(self, pageInfo, title):
@@ -120,14 +125,16 @@ class ConfluenceAdapter(object):
             raise Exception(
                 'The page "{}" was not found and therefore cannot be deleted. There is nothing to do. Aborting.'.format(title))
 
+        url = urljoin(self.apiEndpointUrl + '/', pageInfo.id)
+
         print(
-            'Deleting page "{}" ({})… '.format(
+            'Deleting page "{}" located at {} (DELETE {})… '.format(
                 title,
-                pageInfo.link
+                pageInfo.link,
+                url
             ),
-            end="",
+            end='',
             flush=True)
-        url = urljoin(self.apiEndpointUrl, pageInfo.id)
 
         preparedRequest = requests.Request('DELETE', url).prepare()
 
@@ -157,10 +164,10 @@ class ConfluenceAdapter(object):
         postSession.auth = self.auth
         postSession.headers.update({'Content-Type': 'application/json'})
 
-        print('Creating the page "{}"… '.format(
+        print('Creating the page "{}" (POST {})… '.format(
             title,
             url),
-            end="",
+            end='',
             flush=True)
         newPage = {'type': 'page',
                    'title': title,
@@ -178,7 +185,7 @@ class ConfluenceAdapter(object):
         response.raise_for_status()
 
         if response.status_code == 200:
-            print('OK')
+            print('OK, created.')
             data = response.json()
             humanReadableUrl = urljoin(
                 self.wikiUrl,
@@ -252,8 +259,13 @@ class ConfluenceAdapter(object):
 
     def uploadAttachment(self, sourceFolder, pageId, normalizedPath, originalPath):
         sourcePath = os.path.join(sourceFolder, originalPath)
-        print('Uploading attachment {} ({} bytes)… '.format(sourcePath, os.stat(sourcePath).st_size),
-              end="",
+
+        url = urljoin(
+            self.apiEndpointUrl + '/',
+            '{}/child/attachment/'.format(pageId))
+
+        print('Uploading attachment {} with {} bytes (POST {})… '.format(sourcePath, os.stat(sourcePath).st_size, url),
+              end='',
               flush=True)
 
         contentType = mimetypes.guess_type(sourcePath)
@@ -262,10 +274,6 @@ class ConfluenceAdapter(object):
             'comment': comment,
             'file': (normalizedPath, open(sourcePath, 'rb'), contentType, {'Expires': '0'})
         }
-
-        url = urljoin(
-            self.apiEndpointUrl,
-            '{}/child/attachment/'.format(pageId))
 
         response = self.session.post(
             url,

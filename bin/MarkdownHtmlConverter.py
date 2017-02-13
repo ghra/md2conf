@@ -6,7 +6,7 @@ Created on Feb 1, 2017
 
 import os
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, CData
 import markdown
 
 MD_EXTENSIONS = [
@@ -33,6 +33,7 @@ class MarkdownHtmlConverter(object):
         self.markdownfilename = markdownfilename
         html = self.convertMarkdownToHtml()
         self.soup = BeautifulSoup(html, "html.parser")
+        self.finetuneSoup()
         self.normalized2OriginalSrcMapping = {}
         self.replaceIncludesOfLocalResources()
 
@@ -135,3 +136,33 @@ class MarkdownHtmlConverter(object):
 
     def getNormalized2OriginalSrcMapping(self):
         return self.normalized2OriginalSrcMapping
+
+    def finetuneSoup(self):
+        self.replaceCodeBlocks()
+
+    def replaceCodeBlocks(self):
+        ''' this is how it should look like:
+        <ac:structured-macro ac:name="code" ac:schema-version="1" ac:macro-id="168f7514-4b7f-4202-9832-76ca4d2f9650">
+            <ac:plain-text-body>
+                <![CDATA[first line
+second line
+third line]]>
+            </ac:plain-text-body>
+        </ac:structured-macro>
+
+        code blocks are initially created as <pre><code>code...</code></pre>
+        '''
+        for codeblock in self.soup.findAll('pre'):
+            children = codeblock.findChildren()
+            if len(children) == 1:
+                firstChild = children[0]
+                if firstChild.name == 'code':
+                    codeText = firstChild.text
+                    structuredMacroElement = self.soup.new_tag(
+                        'ac:structured-macro', **{'ac:name': 'code', 'ac:schema-version': 1})
+                    plainTextBodyElement = self.soup.new_tag(
+                        'ac:plain-text-body')
+                    cdata = CData(codeText)
+                    plainTextBodyElement.append(cdata)
+                    structuredMacroElement.append(plainTextBodyElement)
+                    codeblock.replaceWith(structuredMacroElement)

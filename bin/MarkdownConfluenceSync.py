@@ -5,14 +5,12 @@ Created on Jan 31, 2017
 '''
 
 import os.path
-import sys
 
 from ConfluenceAdapter import ConfluenceAdapter
 from MarkdownHtmlConverter import MarkdownHtmlConverter
 
 
 class MarkdownConfluenceSync(object):
-    # TODO: create classdocs
 
     def __init__(self, args):
         self.args = args
@@ -45,21 +43,20 @@ class MarkdownConfluenceSync(object):
 
         if self.args.delete:
             self.confluenceAdapter.deletePage(targetPageInfo, self.title)
-            return
+        else:
+            self.ancestorSnippet = self.getAncestorsSnippet()
 
-        self.ancestorSnippet = self.getAncestorsSnippet()
+            pageId = self.confluenceAdapter.uploadPage(
+                targetPageInfo,
+                self.title,
+                self.markdownHtmlConverter.soup,
+                self.ancestorSnippet,
+            )
 
-        pageId = self.confluenceAdapter.uploadPage(
-            targetPageInfo,
-            self.title,
-            self.markdownHtmlConverter.soup,
-            self.ancestorSnippet,
-        )
-
-        self.confluenceAdapter.uploadAttachments(
-            self.sourceFolder,
-            pageId,
-            self.markdownHtmlConverter.getNormalized2OriginalSrcMapping())
+            self.confluenceAdapter.uploadAttachments(
+                self.sourceFolder,
+                pageId,
+                self.markdownHtmlConverter.getNormalized2OriginalSrcMapping())
 
         self.printGoodByeMessage()
 
@@ -72,11 +69,8 @@ class MarkdownConfluenceSync(object):
                     {'type': 'page', 'id': parentPageInfo.id}
                 ]
             else:
-                print(
-                    '* Error: Parent page does not exist: {}'.format(self.args.ancestor))
-                # TODO: print an error message (will count as exit code 1) or
-                # better throw exception
-                sys.exit(1)
+                raise Exception(
+                    'The parent page "{}" does not exist.'.format(self.args.ancestor))
         else:
             return []
 
@@ -90,14 +84,10 @@ Space key:     "{}"
 Title:         "{}"
 Parent title:  "{}"
 '''.format(os.path.abspath(self.args.markdownFile),
-           # TODO: print something if no spacekey is provided (username or so
-           # will then be the spacekey)
-           # TODO: the username is an email address which does not work as
-           # private space, i think. better double-check this
-           self.args.spacekey or '(nothing provided, will use ~username instead)',
+           self.args.spacekey,
            self.title,
            # TODO: what will be used?
-           self.args.ancestor or '(nothing provided, will use ??? instead)'
+           self.args.ancestor or '(nothing provided, will create the page directly in the root of the selected space)'
            )
         )
 

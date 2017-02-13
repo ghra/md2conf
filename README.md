@@ -1,36 +1,37 @@
 Markdown to Confluence Converter
 ===
 
-A script to import a named markdown document into Confluence. It handles inline images as well as code blocks. Also there is support for some custom markdown tags for use with commonly used Confluence macros.
+A script to import a named markdown document into Confluence. It handles inline images as well as code blocks and attachments. Also there is support for some custom markdown tags for use with commonly used Confluence macros.
 
-The file will be converted into HTML or Confluence storage markup when required. Then a page will be created in the space or if it already exists, the page will be uploaded.
+The file will be converted into HTML and then to Confluence storage markup. Then a page will be created in the space or if it already exists, the page will be updated. (Updating does not work, currently.)
 
 ## Configuration
 
-[Download](https://github.com/rittmanmead/md_to_conf)
+[Download](https://github.com/nicr9/md2conf)
 
 ### Python
-Python should be installed with the following required modules:
+Python 3 should be installed with the following required modules (most of them are installed by default):
 
-* requests
+* argparse
+* bs4
+* collections
 * json
 * markdown
 * mimetypes
-* codecs
-* webbrowser
+* os
+* requests
+* sys
 * urllib
-* argparse
-* bs4
 
 Instructions on installing Python and modules can be found [here](https://rittmanmead.atlassian.net/wiki/display/TECH/Python).
 
 ### Environment Variables
 
-To use it, you will need your Confluence username, password and organisation name. If you use Google Apps to sign in to Confluence, you can still have a username & password for your Confluence account. Just logout and follow the "Unable to access your account?" link from the sign in page, which lets you set a new password.
+To use it, you will need your Confluence username, password and organisation name. If you use Google Apps to sign in to Confluence, you can still have a username & password for your Confluence account. Just logout and follow the "Unable to access your account?" link from the sign in page, which lets you set a new password. Note that your username should not be your email address. Though it seems to work for some requests, not the whole process can be run with an email address as username. Some requests have to be issued twice (GET, POST), other requests (DELETE) do not work at all. Use your real username instead. You can find it out by mentioning your user (using the `@` in Confluence or JIRA) or open the “People” page in Confluence. There you will be able to see the usernames when you hover over or click on a user.
 
 You will also need the organisation name that is used in the subdomain. For example the URL: `https://fawltytowers.atlassian.net/wiki/` would indicate an organsiation name of **fawltytowers**.
 
-These can be specified at runtime or set as Confluence environment variables (eg add to your ~/.profile or ~/.bash_profile on Mac OS): 
+These can be specified at runtime or set as Confluence environment variables (e.g., add to your ~/.profile or ~/.bash_profile on Mac OS): 
 
 ``` bash
 export CONFLUENCE_USERNAME='basil'
@@ -62,27 +63,23 @@ Use **-h** to view a list of all available options.
 
 ### Other Uses
 
-Use **-a** or **--ancestor** to designate the name of a page which the page should be created under.
+Use **-a** or **--ancestor** to designate the name of a page which the page should be created under. This has to be the name, not the ID of the parent page.
 
 ```
 python md2conf.py readme.md TST -a "Parent Page Name"
 ```
 
-Use **-d** or **--delete** to delete the page instead of create it. Obviously this won't work if it doesn't already exist.
+Use **-d** or **--delete** to delete the page instead of create it. Obviously this won't work if it doesn't already exist. The markdown file is then used only to find out the name of the page to delete.
 
-Use **-n** or **--nossl** to specify a non-SSL url, i.e. **http://** instead of **https://**.
+Use **-n** or **--nossl** to specify a non-SSL url, i.e., **http://** instead of **https://**.
+
+Attachments are uploaded automatically. For historical reasons there is a command line argument for attachments.
 
 ## Markdown
 
-The original markdown to HTML conversion is performed by the Python **markdown** library. Additionally, the page name is taken from the first line of  the markdown file, usually assumed to be the title. In the case of this document, the page would be called: **Markdown to Confluence Converter**.
+The original markdown to HTML conversion is performed by the Python **markdown** library. Additionally, the page name is taken from the first <h1> of the markdown file (after converting it to HTML), usually assumed to be the title.
 
-Standard markdown syntax for images and code blocks will be automatically converted. The images are uploaded as attachments and the references updated in the HTML. The code blocks will be converted to the Confluence Code Block macro and also supports syntax highlighting.
-
-### Additional usage information
-
-* The title of the page is determined by the contents of the first <h1> element.
-* The username should be the actual username in confluence. The email address seems to work at a first glance, but behaves strange. Some requests have to be issued twice (GET, POST), other requests (DELETE) do not work at all.
- * Find out the username by mentioning the user (using the `@` in Confluence or JIRA) or open the “People” page in Confluence. There you will be able to see the usernames when you hover over or click on a username.
+Standard markdown syntax for images and code blocks will be automatically converted. The images are uploaded as attachments and the references updated in the HTML. The code blocks will be converted to the Confluence Code Block macro and also support syntax highlighting.
 
 ### Information, Note and Warning Macros
 

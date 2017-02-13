@@ -7,7 +7,7 @@ Created on Feb 2, 2017
 import json
 import mimetypes
 import os.path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from PageInfo import PageInfo
 import requests
@@ -68,9 +68,6 @@ class ConfluenceAdapter(object):
             'DELETE': self.session.delete(preparedRequest.url),
         }.get(preparedRequest.method)
 
-        # for debugging
-        #print('Response code: {}'.format(response.status_code))
-        #print('Response content: {}'.format(response.content))
         return response
 
     # Retrieve page details by title
@@ -98,10 +95,8 @@ class ConfluenceAdapter(object):
                     'Error: Page not found. Check the following are correct:')
                 print('Space key : "{}"'.format(self.spacekey))
                 print('Organisation name: "{}"'.format(self.organisation))
-                # sys.exit(1)
-            # TODO: format and handle exception properly
             raise Exception(
-                'Error during request (404): {}'.format(response.json()))
+                'Error during request: {}'.format(response.json()))
 
         print('OK')
         data = response.json()
@@ -121,15 +116,15 @@ class ConfluenceAdapter(object):
 
     # Delete a page
     def deletePage(self, pageInfo, title):
-        # TODO: test this
         if not pageInfo:
             raise Exception(
                 'The page "{}" was not found and therefore cannot be deleted. There is nothing to do. Aborting.'.format(title))
 
-        print('Deleting page "{}" ({})… '.format(
-            title,
-            pageInfo.link
-        ),
+        print(
+            'Deleting page "{}" ({})… '.format(
+                title,
+                pageInfo.link
+            ),
             end="",
             flush=True)
         url = urljoin(self.apiEndpointUrl, pageInfo.id)
@@ -179,7 +174,6 @@ class ConfluenceAdapter(object):
                    'ancestors': ancestorSnippet
                    }
 
-        #s.post(url, data=json.dumps(newPage))
         response = postSession.post(url, data=json.dumps(newPage))
         response.raise_for_status()
 
@@ -199,11 +193,9 @@ class ConfluenceAdapter(object):
             raise(Exception(
                 'Uploading the page "{}" failed with error code {}.'.format(title, response.status_code)))
 
-        # deal with images
-#        self.addImages(html)
-
     # Update a page
     def updatePage(self, page):
+        # this method is most probably broken
         print('* Updating page...')
 
         # Add images and attachments
@@ -243,82 +235,6 @@ class ConfluenceAdapter(object):
             print(" - Success: '{}'".format(link))
         else:
             print(" - Page could not be updated.")
-
-#   def processReferencedImages(self, referencedImages):
-#       pass  # ist das hiernach vielleicht verwendbar?
-
-    # Scan for images and upload as attachments if found
-#    def addImages(self, html):
-#        page = None
-#        prettyHtml = None
-#        imgs = html.find_all('img')
-#        if len(imgs) > 0:
-#            print(
-#                '{} images were referenced on the created page. They are uploaded, too (if needed).'.format(
-#                    len(imgs)))
-#            for img in html.find_all('img'):
-#                img['src'] = self.uploadAttachment(
-#                    page, img['src'], img['alt'])
-#
-#        referencedImages = re.findall('<img(.*?)\/>', prettyHtml)
-#        if len(referencedImages) > 0:  # or attachments:
-#            print(
-#                '{} images were referenced on the created page. They are uploaded, too (if needed).'.format(
-#                    len(referencedImages)))
-#            self.processReferencedImages(referencedImages)
-
-#        # das ist viel besser als der regex, vielleicht kann man den gleich
-#        # loswerden
-#        for img in self.soup.find_all('img'):
-#            img['src'] = self.uploadAttachment(page, img['src'], img['alt'])
-
-    # Add attachments for an array of files
-    def addAttachments(self, page):
-        for path in self.args.attachments:
-            self.uploadAttachment(page, path, '')
-
-    def getAttachment(self, page, filename):
-        url = urljoin(
-            self.apiEndpointUrl,
-            '{}/child/attachment'.format(page.id))
-
-        r = self.session.get(url, params={
-            'filename': filename,
-        })
-        r.raise_for_status()
-
-        data = r.json()
-        if data['results']:
-            return '/wiki/rest/api/content/{}/child/attachment/{}/data'.format(
-                page.id, data['results'][0]['id'])
-
-        return '/wiki/rest/api/content/{}/child/attachment/'.format(page.id)
-
-    # Upload an attachment
-    def uploadAttachmentOld(self, page, rel_path, comment):
-        if urlparse(rel_path).scheme:
-            return rel_path
-        basename = os.path.basename(rel_path)
-        print(' - Uploading attachment {}...'.format(basename))
-
-        attachment = self.getAttachment(page, basename)
-        url = urljoin(self.baseUrl, attachment)
-
-        full_path = os.path.join(self.sourceFolder, rel_path)
-        contentType = mimetypes.guess_type(full_path)[0]
-        payload = {
-            'comment': comment,
-            'file': (basename, open(full_path, 'rb'), contentType, {'Expires': '0'})
-        }
-
-        r = self.session.post(
-            url,
-            files=payload,
-            headers={'X-Atlassian-Token': 'no-check'},
-        )
-        r.raise_for_status()
-
-        return '/wiki/download/attachments/{}/{}'.format(page.id, basename)
 
     def uploadAttachments(self, sourceFolder, pageId, normalized2OriginalPathMapping):
         numberOfAttachmentsToUpload = len(normalized2OriginalPathMapping)

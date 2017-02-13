@@ -65,10 +65,12 @@ class MarkdownHtmlConverter(object):
         self.soup.insert(0, toc)
 
     def replaceIncludesOfLocalResources(self):
-        # first, replace local images
+        # first, replace local images references
         self.replaceIncludesOfLocalImages()
 
-        # second, replace other local resources (pdf, json, zip, etc.)
+        # second, replace references to other local resources (pdf, json, zip,
+        # etc.) that may be decorated with an image (thus, the images have been
+        # converted before)
         self.replaceIncludesOfLocalAttachments()
 
     def replaceIncludesOfLocalImages(self):
@@ -79,36 +81,11 @@ class MarkdownHtmlConverter(object):
                 self.cautiouslyAddMapping(normalizedSrc, src)
                 img['src'] = normalizedSrc
                 self.transformImgToConfluenceImageInclude(img)
-#        result = ''
-#        # the following regex splits up html like this
-#        # input: a<img src="x.jpg" alt="a" title="t"/>b<img src="y.jpg" alt="e" title="z"/>c
-#        # output: a, <img src="x.jpg" alt="a" title="t"/>, b, <img src="y.jpg"
-#        # alt="e" title="z"/>, c
-#        parts = re.split(r'(<img .*?/>)', html)
-#        for part in parts:
-#            if part.startswith('<img'):
-#                attributes = {
-#                    'src': None,
-#                    'alt': None,
-#                    'title': None,
-#                }
-#                for attribute in attributes.keys():
-#                    match = re.search(
-#                        '(?<={}=").*?(?=")'.format(attribute), part)
-#                    attributes[attribute] = None if match == None else match[0]
-#
-#                if self.isLocalReference(attributes['src']):
-#                    result += self.transformImgToConfluenceImageInclude(
-#                        attributes)
-#                else:
-#                    result += part
-#            else:
-#                result += part
-#        return result
 
     def transformImgToConfluenceImageInclude(self, img):
         ''' that is how it should look like:
             <ac:image ac:title="titeltext" ac:alt="alttext" ac:height="250"><ri:attachment ri:filename="bla.jpg" /></ac:image></p>
+            (actually beautiful soup does not create a self-closing ri:attachment tag, but a regular one, but it still works
             '''
         attributes = {}
         if 'alt' in img.attrs.keys():
@@ -120,22 +97,7 @@ class MarkdownHtmlConverter(object):
         attachmentElement = self.soup.new_tag(
             'ri:attachment', **{'ri:filename': img['src']})
         imageElement.append(attachmentElement)
-
         img.replaceWith(imageElement)
-        print(self.soup.prettify())
-# und außerdem noch die geänderte referenz rausreichen
-
-
-#        result = '<ac:image '
-#        if 'title' in attributes.keys():
-#            result += 'ac:title="{}"'.format(attributes['title'])
-#        if 'alt' in attributes.keys():
-#            result += 'ac:alt="{}"'.format(attributes['alt'])
-#        result += ' ac:height="250">'
-#        result += '<ri:url ri:value="{}" />'.format(
-#            self.removeDirectories(attributes['src']))
-#        result += '</ac:image>'
-#        return result
 
     def replaceIncludesOfLocalAttachments(self):
         for a in self.soup.findAll('a'):
@@ -146,35 +108,10 @@ class MarkdownHtmlConverter(object):
                 a['href'] = normalizedHref
                 self.transformAToConfluenceAttachmentInclude(a)
 
-#    def replaceIncludesOfLocalAnchors(self, html):
-#        result = ''
-#        # the following regex splits up html like this
-#        # input: a<a href="x">b</a>c<a href="x">d</a>e
-#        # output: a, <a href="x">b</a>, c, <a href="x">d</a>, e
-#        parts = re.split('r(<a .*?/>.*?</a>)', html)
-#        for part in parts:
-#            if part.startswith('<a'):
-#                match = re.search('(<a[^>]+>)(.*?)(</a>)', part)
-#                openingTag = match[1]
-#                href = re.search('(?<=href=").*?(?=")', openingTag)[0]
-#                content = match[2]
-#                if self.isLocalReference(href):
-#                    result += part
-#                else:
-#                    result += self.transformAToConfluenceImageInclude(
-#                        href, content)
-#            else:
-#                result += part
-#        return result
-
-#    def transformAToConfluenceImageInclude(self, href, content):
-#        result = '<ac:link><ri:attachment ri:filename="{}" /><ac:plain-text-link-body><![CDATA[{}]]></ac:plain-text-link-body></ac:link>'.format(
-#            href, content)
-#        return result
-
     def transformAToConfluenceAttachmentInclude(self, a):
         ''' that is how it should look like:
             <ac:link><ri:attachment ri:filename="somefile.dat" /><ac:link-body>whatever was inside the original <a> tag</ac:link-body></ac:link>
+            (actually beautiful soup does not create a self-closing ri:attachment tag, but a regular one, but it still works
             '''
         anchorElement = self.soup.new_tag('ac:link')
         attachmentElement = self.soup.new_tag(
@@ -184,7 +121,6 @@ class MarkdownHtmlConverter(object):
         anchorElement.append(attachmentElement)
         anchorElement.append(linkBodyElement)
         a.replaceWith(anchorElement)
-        print(self.soup.prettify())
 
     def isLocalReference(self, srcAttribute):
         return not srcAttribute.startswith('http')

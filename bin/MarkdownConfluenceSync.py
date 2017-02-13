@@ -12,9 +12,6 @@ from MarkdownHtmlConverter import MarkdownHtmlConverter
 
 
 class MarkdownConfluenceSync(object):
-    '''
-    classdocs
-    '''
     # TODO: create classdocs
 
     def __init__(self, args):
@@ -52,7 +49,7 @@ class MarkdownConfluenceSync(object):
 
         self.ancestorSnippet = self.getAncestorsSnippet()
 
-        self.confluenceAdapter.uploadPage(
+        pageId = self.confluenceAdapter.uploadPage(
             targetPageInfo,
             self.title,
             self.markdownHtmlConverter.soup,
@@ -60,7 +57,11 @@ class MarkdownConfluenceSync(object):
         )
 
         self.confluenceAdapter.uploadAttachments(
+            self.sourceFolder,
+            pageId,
             self.markdownHtmlConverter.getNormalized2OriginalSrcMapping())
+
+        self.printGoodByeMessage()
 
     def getAncestorsSnippet(self):
         if self.args.ancestor:
@@ -99,3 +100,6 @@ Parent title:  "{}"
            self.args.ancestor or '(nothing provided, will use ??? instead)'
            )
         )
+
+    def printGoodByeMessage(self):
+        print('Finished successfully.')

@@ -7,7 +7,6 @@ Created on Feb 2, 2017
 import json
 import mimetypes
 import os.path
-import re
 from urllib.parse import urljoin, urlparse
 
 from PageInfo import PageInfo
@@ -65,7 +64,7 @@ class ConfluenceAdapter(object):
 
         response = {
             'GET': self.session.get(preparedRequest.url),
-            'POST': self.session.post(preparedRequest.url),
+            'POST': self.session.send(preparedRequest),
             'DELETE': self.session.delete(preparedRequest.url),
         }.get(preparedRequest.method)
 
@@ -152,7 +151,7 @@ class ConfluenceAdapter(object):
             # self.updatePage(pageInfo)
             pass
         else:
-            self.createPage(title, html, ancestorSnippet)
+            return self.createPage(title, html, ancestorSnippet)
 
     # Create a new page
     def createPage(self, title, html, ancestorSnippet):
@@ -190,9 +189,12 @@ class ConfluenceAdapter(object):
             humanReadableUrl = urljoin(
                 self.wikiUrl,
                 data['_links']['webui'].lstrip('/'))
-            idUrl = urljoin(self.apiEndpointUrl, data[u'id'])
+            idUrl = urljoin(
+                self.wikiUrl,
+                'pages/viewpage.action?pageId={}'.format(data[u'id']))
             print('The created page "{}" is located at "{}" (or {}).'.format(
                 title, humanReadableUrl, idUrl))
+            return data[u'id']
         else:
             raise(Exception(
                 'Uploading the page "{}" failed with error code {}.'.format(title, response.status_code)))
@@ -242,8 +244,8 @@ class ConfluenceAdapter(object):
         else:
             print(" - Page could not be updated.")
 
- #   def processReferencedImages(self, referencedImages):
- #       pass  # ist das hiernach vielleicht verwendbar?
+#   def processReferencedImages(self, referencedImages):
+#       pass  # ist das hiernach vielleicht verwendbar?
 
     # Scan for images and upload as attachments if found
 #    def addImages(self, html):
@@ -293,7 +295,7 @@ class ConfluenceAdapter(object):
         return '/wiki/rest/api/content/{}/child/attachment/'.format(page.id)
 
     # Upload an attachment
-    def uploadAttachment(self, page, rel_path, comment):
+    def uploadAttachmentOld(self, page, rel_path, comment):
         if urlparse(rel_path).scheme:
             return rel_path
         basename = os.path.basename(rel_path)
@@ -318,8 +320,8 @@ class ConfluenceAdapter(object):
 
         return '/wiki/download/attachments/{}/{}'.format(page.id, basename)
 
-    def uploadAttachments(self, normalized2OriginalPathtMapping):
-        numberOfAttachmentsToUpload = len(normalized2OriginalPathtMapping)
+    def uploadAttachments(self, sourceFolder, pageId, normalized2OriginalPathMapping):
+        numberOfAttachmentsToUpload = len(normalized2OriginalPathMapping)
         if numberOfAttachmentsToUpload == 0:
             return
         elif numberOfAttachmentsToUpload == 1:
@@ -328,5 +330,35 @@ class ConfluenceAdapter(object):
             print('{} attachments have to be uploaded.'.format(
                 numberOfAttachmentsToUpload))
 
-        for normalizedPath, originalPath in normalized2OriginalPathtMapping.items():
-            print('{} => {}'.format(normalizedPath, originalPath))
+        for normalizedPath, originalPath in normalized2OriginalPathMapping.items():
+            self.uploadAttachment(
+                sourceFolder, pageId, normalizedPath, originalPath)
+
+    def uploadAttachment(self, sourceFolder, pageId, normalizedPath, originalPath):
+        sourcePath = os.path.join(sourceFolder, originalPath)
+        print('Uploading attachment {} ({} bytes)… '.format(sourcePath, os.stat(sourcePath).st_size),
+              end="",
+              flush=True)
+
+        contentType = mimetypes.guess_type(sourcePath)
+        comment = 'Uploaded from "{}"'.format(originalPath)
+        payload = {
+            'comment': comment,
+            'file': (normalizedPath, open(sourcePath, 'rb'), contentType, {'Expires': '0'})
+        }
+
+        url = urljoin(
+            self.apiEndpointUrl,
+            '{}/child/attachment/'.format(pageId))
+
+        response = self.session.post(
+            url,
+            files=payload,
+            headers={'X-Atlassian-Token': 'no-check'},
+        )
+
+        if response.status_code == 200:
+            print('OK')
+        else:
+            print('Failed')
+            raise Exception(response.message)

@@ -5,7 +5,6 @@ Created on Feb 1, 2017
 '''
 
 import os
-import re
 
 from bs4 import BeautifulSoup
 import markdown

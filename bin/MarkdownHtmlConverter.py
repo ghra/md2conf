@@ -5,9 +5,12 @@ Created on Feb 1, 2017
 '''
 
 import os
+import re
 
 from bs4 import BeautifulSoup, CData
 import markdown
+from pip._vendor.pyparsing import line
+
 
 MD_EXTENSIONS = [
     'markdown.extensions.tables',
@@ -39,7 +42,9 @@ class MarkdownHtmlConverter(object):
 
     def convertMarkdownToHtml(self):
         with open(self.markdownfilename, 'r') as inp:
-            html = markdown.markdown(inp.read(), extensions=MD_EXTENSIONS)
+            mdtext = inp.read()
+            mdtext = self.preprocessMarkdownContent(mdtext)
+            html = markdown.markdown(mdtext, extensions=MD_EXTENSIONS)
             return html
 
     def getTitle(self):
@@ -139,6 +144,7 @@ class MarkdownHtmlConverter(object):
 
     def finetuneSoup(self):
         self.replaceCodeBlocks()
+        self.replaceUnorderedLists()
 
     def replaceCodeBlocks(self):
         ''' this is how it should look like:
@@ -166,3 +172,40 @@ third line]]>
                     plainTextBodyElement.append(cdata)
                     structuredMacroElement.append(plainTextBodyElement)
                     codeblock.replaceWith(structuredMacroElement)
+
+    def replaceUnorderedLists(self):
+        print(self.soup.prettify())
+        pass
+
+    def preprocessMarkdownContent(self, mdtext):
+        mdtext = self.enableLists(mdtext)
+        return mdtext
+
+    def enableLists(self, mdtext):
+        '''
+        Unfortunately, lists are not recognized when they do not have a blank line before the first entry. In this case, the asterisks are interpreted as emphasize markup.
+        Therefore, a newline has to be added before 
+        '''
+        lines = reversed(mdtext.splitlines())
+        outputLines = []
+
+        lastLineWasListItem = False
+        for line in lines:
+            isListItem = self.isProbablyListItem(line)
+
+            if isListItem and lastLineWasListItem:
+                outputLines.append(line)
+            elif isListItem and not lastLineWasListItem:
+                outputLines.append(line)
+                lastLineWasListItem = True
+            elif not isListItem and lastLineWasListItem:
+                outputLines.append('')
+                outputLines.append(line)
+                lastLineWasListItem = True
+            else:
+                outputLines.append(line)
+
+        return '\n'.join(outputLines.reverse())
+
+    def isProbablyListItem(self, line):
+        return re.fullmatch(r'\s*\*[^*]+', line) != None

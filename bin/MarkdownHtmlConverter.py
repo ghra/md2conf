@@ -15,6 +15,7 @@ from pip._vendor.pyparsing import line
 MD_EXTENSIONS = [
     'markdown.extensions.tables',
     'markdown.extensions.fenced_code',
+    # maybe more: https://pythonhosted.org/Markdown/extensions/
 ]
 
 TOC_PARAMS = {

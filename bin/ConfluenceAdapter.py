@@ -156,8 +156,11 @@ class ConfluenceAdapter(object):
             return self.createPage(title, html, ancestorSnippet)
 
     # Create a new page
-    def createPage(self, title, html, ancestorSnippet):
-        prettyHtml = html.prettify()
+    def createPage(self, title, prettyHtml, ancestorSnippet):
+        #prettyHtml = html.prettify()
+        #prettyHtml = '<ac:image ac:alt="alt-text"><ri:url ri:value="http://www.pixelio.de/data/media/27/bleistift.jpg" /></ac:image>'
+        #prettyHtml = '<ac:image ac:alt="Deployment-dings" ac:title="This is the deployment dings"> <ri:attachment ri:filename="2015-07-13_EP-system-architecture.png"> </ri:attachment></ac:image>'
+        #prettyHtml = '<ac:image ac:alt="Deployment-dings" ac:title="This is the deployment dings"> <ri:attachment ri:filename="2015-07-13_EP-system-architecture.png" /></ac:image>'
 
         url = self.apiEndpointUrl
         postSession = requests.Session()

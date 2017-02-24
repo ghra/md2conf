@@ -95,7 +95,7 @@ class MarkdownHtmlConverter(object):
 
     def transformImgToConfluenceImageInclude(self, img):
         ''' that is how it should look like:
-            <ac:image ac:title="titeltext" ac:alt="alttext" ac:height="250"><ri:attachment ri:filename="bla.jpg" /></ac:image></p>
+            <ac:image ac:title="titletext" ac:alt="alttext" ac:height="250"><ri:attachment ri:filename="bla.jpg" /></ac:image></p>
             (actually beautiful soup does not create a self-closing ri:attachment tag, but a regular one, but it still works
             '''
         attributes = {}
@@ -105,6 +105,10 @@ class MarkdownHtmlConverter(object):
             attributes['ac:title'] = img['title']
 
         imageElement = self.soup.new_tag('ac:image', **attributes)
+        # imageElement.string = '<ri:attachment ri:filename="{}" />'.format(
+        #    img['src'])
+        # beautifulsoup cannot create self-closing tags (unless the allowed
+        # elements are configured properly, so we do it by hand)
         attachmentElement = self.soup.new_tag(
             'ri:attachment', **{'ri:filename': img['src']})
         imageElement.append(attachmentElement)
@@ -175,6 +179,7 @@ third line]]>
                     codeblock.replaceWith(structuredMacroElement)
 
     def replaceUnorderedLists(self):
+        # TODO remove this method if it contains no meaningful content
         print(self.soup.prettify())
         pass
 
@@ -185,7 +190,7 @@ third line]]>
     def enableLists(self, mdtext):
         '''
         Unfortunately, lists are not recognized when they do not have a blank line before the first entry. In this case, the asterisks are interpreted as emphasize markup.
-        Therefore, a newline has to be added before 
+        Therefore, a newline has to be added before.
         '''
         lines = reversed(mdtext.splitlines())
         outputLines = []
@@ -206,7 +211,23 @@ third line]]>
             else:
                 outputLines.append(line)
 
-        return '\n'.join(outputLines.reverse())
+        return '\n'.join(reversed(outputLines))
 
     def isProbablyListItem(self, line):
         return re.fullmatch(r'\s*\*[^*]+', line) != None
+
+    def prettyPrint(self):
+        html = self.soup.prettify()
+        html = self.polishHtml(html)
+        return html
+
+    def polishHtml(self, html):
+        # do last changes that cannot be done with BeautifulSoup
+
+        html = self.selfCloseRiAttachments(html)
+        return html
+
+    def selfCloseRiAttachments(self, html):
+        # simulate self-closing <ri:attachment> tags
+        html = re.sub(r'">\s*</ri:attachment>', r'" />', html, re.M)
+        return html

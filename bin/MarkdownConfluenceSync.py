@@ -49,7 +49,7 @@ class MarkdownConfluenceSync(object):
             pageId = self.confluenceAdapter.uploadPage(
                 targetPageInfo,
                 self.title,
-                self.markdownHtmlConverter.soup,
+                self.markdownHtmlConverter.prettyPrint(),
                 self.ancestorSnippet,
             )
 

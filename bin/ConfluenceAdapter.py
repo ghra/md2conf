@@ -148,10 +148,7 @@ class ConfluenceAdapter(object):
 
     def uploadPage(self, pageInfo, title, html, ancestorSnippet):
         if pageInfo:
-            # FIXME: update a page
-            print('Disabled updating a page.')
-            # self.updatePage(pageInfo)
-            pass
+            return self.updatePage(title, html, ancestorSnippet, pageInfo)
         else:
             return self.createPage(title, html, ancestorSnippet)
 
@@ -204,29 +201,24 @@ class ConfluenceAdapter(object):
                 'Uploading the page "{}" failed with error code {}.'.format(title, response.status_code)))
 
     # Update a page
-    def updatePage(self, page):
-        # this method is most probably broken
+    def updatePage(self, title, prettyHtml, ancestorSnippet, page):
         print('* Updating page...')
 
-        # Add images and attachments
-        self.addImages(page)
-        # self.addAttachments(page)
-
-        url = urljoin(self.apiEndpointUrl, format(page.id))
+        url = urljoin(self.apiEndpointUrl + '/', page.id)
 
         payload = {
             "type": "page",
-            "title": self.title,
+            "title": title,
             "body": {
                     "storage": {
-                        "value": self.soup.prettify(),
+                        "value": prettyHtml,
                         "representation": "storage",
                     },
             },
             "version": {
                 "number": page.version + 1
             },
-            "ancestors": self.ancestors,
+            "ancestors": ancestorSnippet,
         }
 
         r = self.session.put(
@@ -245,6 +237,8 @@ class ConfluenceAdapter(object):
             print(" - Success: '{}'".format(link))
         else:
             print(" - Page could not be updated.")
+
+        return page.id
 
     def uploadAttachments(self, sourceFolder, pageId, normalized2OriginalPathMapping):
         numberOfAttachmentsToUpload = len(normalized2OriginalPathMapping)

@@ -254,12 +254,42 @@ class ConfluenceAdapter(object):
             self.uploadAttachment(
                 sourceFolder, pageId, normalizedPath, originalPath)
 
+    def getAttachmentId(self, pageId, normalizedPath):
+        url = urljoin(self.apiEndpointUrl + '/', '{}/child/attachment/'.format(pageId))
+
+        preparedRequest = requests.Request('GET', url).prepare()
+
+        print('Checking, whether "{}" attachment exists on page {} (GET {})… '.format(
+            normalizedPath,
+            pageId,
+            preparedRequest.url))
+
+        response = self.doRequest(preparedRequest)
+
+        if response.status_code != 200:
+            raise Exception(response.reason)
+
+        atts = response.json()['results']
+        atts = list(filter(lambda a: a['title'] == normalizedPath, atts))
+        numOfAtts = len(atts)
+        if numOfAtts == 0:
+            return None
+        if numOfAtts > 1:
+            raise Exception('Found {} attachments with that name.'.format(numOfAtts))
+
+        fullAttId = atts[0]['id']   # eg. "att19336067"
+        return fullAttId
+
     def uploadAttachment(self, sourceFolder, pageId, normalizedPath, originalPath):
         sourcePath = os.path.join(sourceFolder, originalPath)
 
         url = urljoin(
             self.apiEndpointUrl + '/',
             '{}/child/attachment/'.format(pageId))
+
+        attId = self.getAttachmentId(pageId, normalizedPath)
+        if attId is not None:
+            url = url + '{}/data'.format(attId)
 
         print('Uploading attachment {} with {} bytes (POST {})… '.format(sourcePath, os.stat(sourcePath).st_size, url),
               end='',
@@ -282,4 +312,6 @@ class ConfluenceAdapter(object):
             print('OK')
         else:
             print('Failed')
-            raise Exception(response.message)
+            raise Exception(response.reason)
+
+

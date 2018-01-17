@@ -19,6 +19,7 @@ class MarkdownConfluenceSync(object):
 
         self.confluenceAdapter = ConfluenceAdapter(
             args.nossl,
+            args.force_wiki_url,
             args.orgname,
             args.username,
             args.password,

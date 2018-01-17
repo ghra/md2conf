@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 '''
 Created on Feb 2, 2017
 
@@ -15,7 +16,8 @@ import requests
 
 class ConfluenceAdapter(object):
 
-    def __init__(self, nossl, organisation, username, password, spacekey):
+    def __init__(self, nossl, forceWikiUrl, organisation, username, password, spacekey):
+        self.forceWikiUrl = forceWikiUrl
         self.organisation = organisation
         self.spacekey = spacekey or username
         self.setUpUrls(nossl)
@@ -23,21 +25,22 @@ class ConfluenceAdapter(object):
         self.init_session()
 
     def setUpUrls(self, nossl):
-        schema = 'http' if nossl else 'https'
+        if self.forceWikiUrl is None:
+            schema = 'http' if nossl else 'https'
+            baseUrl = '{}://{}.atlassian.net/wiki/'.format(schema, self.organisation)
+        else:
+            baseUrl = self.forceWikiUrl
+            if not baseUrl.endswith('/'):
+                baseUrl += '/'
 
-        baseUrl = '{}://{}.atlassian.net/'.format(
-            schema,
-            self.organisation
-        )
         # the URL that HTTP requests are issued against
-        self.apiEndpointUrl = urljoin(baseUrl, '/wiki/rest/api/content')
+        self.apiEndpointUrl = urljoin(baseUrl, 'rest/api/content')
 
         # a URL that is used to check authentication
-        self.connectionTestUrl = urljoin(
-            self.apiEndpointUrl, '?limit=0')
+        self.connectionTestUrl = urljoin(self.apiEndpointUrl, '?limit=0')
 
         # the URL where the human-readable wiki lives
-        self.wikiUrl = urljoin(baseUrl, 'wiki/')
+        self.wikiUrl = baseUrl
 
     def init_session(self):
         # do a request to the auth URL to set up authentication headers (This

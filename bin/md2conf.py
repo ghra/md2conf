@@ -76,6 +76,11 @@ if __name__ == "__main__":
         default=False,
         help='Use this option to delete the page instead of creating/updating it. The markdown file is then used only to find out the name of the page to be deleted.'
     )
+    parser.add_argument(
+        '--force-wiki-url',
+        default=getenv('CONFLUENCE_WIKI_URL', None),
+        help='Use this option to force other than http(s)://<orgname>.atlassian.net/wiki url. Would disable <orgname> and <nossl> options. Also available as $CONFLUENCE_WIKI_URL env.'
+    )
     args = parser.parse_args()
 
     if not os.path.exists(args.markdownFile):
@@ -85,7 +90,7 @@ if __name__ == "__main__":
             )
         )
 
-    if not all([args.username, args.password, args.orgname]):
+    if not all([args.username, args.password]) or (not args.orgname and not args.force_wiki_url):
         print(
             'Please provide a username, a password, and an organisation name ' +
             'explicitly or via environment variables, see below. Both can ' +

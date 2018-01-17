@@ -21,8 +21,6 @@ MD_EXTENSIONS = [
 TOC_PARAMS = {
     'printable': 'true',
     'style': 'disc',
-    'maxLevel': '5',
-    'minLevel': '1',
     'class': 'rm-contents',
     'exclude': '',
     'type': 'list',

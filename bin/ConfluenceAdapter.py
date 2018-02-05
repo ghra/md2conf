@@ -54,7 +54,7 @@ class ConfluenceAdapter(object):
             errorMessage = 'Authentification against Confluence failed returning the status code {}. '.format(
                 response.status_code)
             errorMessage += {
-                401: 'The credentials are unknown to the organisation "{}".'.format(self.organisation),
+                401: 'The credentials are unknown to the wiki under the url "{}".'.format(self.wikiUrl),
                 502: 'The organisation name "{}" is unknown to Atlassian.'.format(self.organisation),
             }.get(response.status_code, 'An unknown error occurred.')
             raise Exception(errorMessage)

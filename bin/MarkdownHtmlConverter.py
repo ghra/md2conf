@@ -42,7 +42,6 @@ class MarkdownHtmlConverter(object):
     def convertMarkdownToHtml(self):
         with open(self.markdownfilename, 'r') as inp:
             mdtext = inp.read()
-            mdtext = self.preprocessMarkdownContent(mdtext)
             html = markdown.markdown(mdtext, extensions=MD_EXTENSIONS)
             return html
 
@@ -178,41 +177,7 @@ third line]]>
 
     def replaceUnorderedLists(self):
         # TODO remove this method if it contains no meaningful content
-        print(self.soup.prettify())
         pass
-
-    def preprocessMarkdownContent(self, mdtext):
-        mdtext = self.enableLists(mdtext)
-        return mdtext
-
-    def enableLists(self, mdtext):
-        '''
-        Unfortunately, lists are not recognized when they do not have a blank line before the first entry. In this case, the asterisks are interpreted as emphasize markup.
-        Therefore, a newline has to be added before.
-        '''
-        lines = reversed(mdtext.splitlines())
-        outputLines = []
-
-        lastLineWasListItem = False
-        for line in lines:
-            isListItem = self.isProbablyListItem(line)
-
-            if isListItem and lastLineWasListItem:
-                outputLines.append(line)
-            elif isListItem and not lastLineWasListItem:
-                outputLines.append(line)
-                lastLineWasListItem = True
-            elif not isListItem and lastLineWasListItem:
-                outputLines.append('')
-                outputLines.append(line)
-                lastLineWasListItem = False
-            else:
-                outputLines.append(line)
-
-        return '\n'.join(reversed(outputLines))
-
-    def isProbablyListItem(self, line):
-        return re.fullmatch(r'\s*\*[^*]+', line) != None
 
     def prettyPrint(self):
         html = self.soup.prettify()

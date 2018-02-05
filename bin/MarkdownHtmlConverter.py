@@ -205,7 +205,7 @@ third line]]>
             elif not isListItem and lastLineWasListItem:
                 outputLines.append('')
                 outputLines.append(line)
-                lastLineWasListItem = True
+                lastLineWasListItem = False
             else:
                 outputLines.append(line)
 
